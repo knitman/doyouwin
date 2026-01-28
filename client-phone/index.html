@@ -2,7 +2,7 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8">
-<title>Player</title>
+<title>Party Player</title>
 <style>
 body{
   margin:0;
@@ -36,6 +36,7 @@ button{
   background:#ffbe0b;
   font-weight:bold;
 }
+button:disabled{opacity:0.4;}
 </style>
 </head>
 <body>
@@ -45,58 +46,74 @@ button{
 <button id="action">ΕΤΟΙΜΟΣ</button>
 
 <script>
-const ws=new WebSocket("ws://localhost:8080");
-const emojis=["😎","🤡","🤖","👑","🐱","🐶","🦊","🐸","👻","💀"];
+const ws = new WebSocket("ws://localhost:8080");
+const grid = document.getElementById("grid");
+const btn = document.getElementById("action");
+const title = document.getElementById("title");
+
+let emojis=[];
+let players={};
 let selected=null;
-let myId=null;
-let currentTurn=null;
-const grid=document.getElementById("grid");
-const btn=document.getElementById("action");
-const title=document.getElementById("title");
+let myTurn=false;
 
-ws.onmessage=e=>{
-  const {type,data}=JSON.parse(e.data);
+ws.onmessage = e=>{
+  const { type, data } = JSON.parse(e.data);
 
-  if(type==="INIT") render(data.players);
+  if(type==="INIT"){
+    emojis=data.emojis;
+    players=data.players;
+    render();
+  }
+
   if(type==="UPDATE"){
-    currentTurn=data.turn;
-    render(data.players);
+    players=data.players;
+    myTurn = data.turn && players[data.turn]?.emoji === selected;
+    render();
     updateUI();
+  }
+
+  if(type==="WIN"){
+    title.textContent="🏆 Νικητής " + data.emoji;
+    btn.disabled=true;
   }
 };
 
-function render(players){
+function render(){
   grid.innerHTML="";
   emojis.forEach(e=>{
-    const used=Object.values(players).some(p=>p.emoji===e);
+    const used = Object.values(players).some(p=>p.emoji===e);
     const d=document.createElement("div");
     d.className="emoji"+(selected===e?" selected":"");
     d.textContent=e;
-    if(!used) d.onclick=()=>{selected=e; render(players);}
-    else d.style.opacity=0.3;
+    if(!used){
+      d.onclick=()=>{selected=e; render();}
+    }else{
+      d.style.opacity=0.3;
+    }
     grid.appendChild(d);
   });
 }
 
-btn.onclick=()=>{
-  if(!myId && selected){
-    ws.send(JSON.stringify({type:"JOIN",data:{emoji:selected}}));
-    myId=ws;
-    title.textContent="Περιμένε τη σειρά σου";
-    btn.textContent="ROLL 🎲";
-  }else{
-    ws.send(JSON.stringify({type:"ROLL"}));
-  }
-};
-
 function updateUI(){
-  if(currentTurn && ws.id===currentTurn){
-    btn.disabled=false;
+  if(selected && myTurn){
     title.textContent="Η ΣΕΙΡΑ ΣΟΥ!";
+    btn.textContent="ROLL 🎲";
+    btn.disabled=false;
   }else{
+    title.textContent="Περίμενε…";
     btn.disabled=true;
   }
 }
+
+btn.onclick=()=>{
+  if(selected){
+    ws.send(JSON.stringify({ type:"JOIN", data:{ emoji:selected }}));
+    btn.disabled=true;
+  }
+  if(myTurn){
+    ws.send(JSON.stringify({ type:"ROLL" }));
+  }
+};
 </script>
 
 </body>
