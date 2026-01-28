@@ -5,60 +5,27 @@
 <title>Party Board TV</title>
 <style>
 body{
-  margin:0;
-  background:#050505;
-  color:white;
-  font-family:Arial;
-  height:100vh;
-  display:flex;
-  justify-content:center;
-  align-items:center;
+  margin:0;background:#050505;color:white;font-family:Arial;
+  height:100vh;display:flex;justify-content:center;align-items:center;
 }
-canvas{
-  background:#0b1d3a;
-  border-radius:22px;
-}
+canvas{background:#0b1d3a;border-radius:22px;}
 button{
-  position:fixed;
-  top:30px;
-  font-size:18px;
-  padding:10px 18px;
-  border:none;
-  border-radius:12px;
-  font-weight:bold;
+  position:fixed;top:30px;font-size:18px;
+  padding:10px 18px;border:none;border-radius:12px;font-weight:bold;
 }
-#startBtn{ right:30px; background:#2ecc71; }
-#restartBtn{ right:140px; background:#e74c3c; }
-#muteBtn{ left:30px; background:#444; color:white; }
-
-#qr{
-  position:fixed;
-  left:30px;
-  bottom:30px;
-  text-align:center;
-}
-#qr img{
-  width:140px;
-  border-radius:14px;
-  background:white;
-  padding:6px;
-}
+#startBtn{right:30px;background:#2ecc71;}
+#restartBtn{right:140px;background:#e74c3c;}
+#muteBtn{left:30px;background:#444;color:white;}
+#qr{position:fixed;left:30px;bottom:30px;text-align:center;}
+#qr img{width:140px;border-radius:14px;background:white;padding:6px;}
 .overlay{
-  position:fixed;
-  inset:0;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  background:rgba(0,0,0,0.6);
-  opacity:0;
+  position:fixed;inset:0;display:flex;justify-content:center;
+  align-items:center;background:rgba(0,0,0,.6);opacity:0;
 }
-.overlay.show{ opacity:1; }
+.overlay.show{opacity:1;}
 .box{
   background:linear-gradient(135deg,#ff006e,#8338ec);
-  padding:50px 90px;
-  border-radius:50px;
-  font-size:46px;
-  font-weight:bold;
+  padding:50px 90px;border-radius:50px;font-size:46px;font-weight:bold;
 }
 </style>
 </head>
@@ -80,75 +47,77 @@ button{
 </div>
 
 <script>
+/* ====== WS ====== */
 const ws = new WebSocket(
-  (location.protocol === "https:" ? "wss://" : "ws://") + location.host
+  (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
-/* QR dynamic */
-document.getElementById("qrImg").src =
-  "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
-  encodeURIComponent(location.origin + "/phone");
+/* ====== DOM ====== */
+const startBtn=document.getElementById("startBtn");
+const restartBtn=document.getElementById("restartBtn");
+const muteBtn=document.getElementById("muteBtn");
+const overlay=document.getElementById("overlay");
+const overlayBox=document.getElementById("overlayBox");
 
-/* AUDIO */
+/* QR */
+document.getElementById("qrImg").src=
+  "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data="+
+  encodeURIComponent(location.origin+"/phone");
+
+/* ====== AUDIO ====== */
 const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
 let MUTED=false;
 function play(f,d,v,t){
   if(MUTED) return;
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type=t; o.frequency.value=f; g.gain.value=v;
-  o.connect(g); g.connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+d);
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.type=t;o.frequency.value=f;g.gain.value=v;
+  o.connect(g);g.connect(audioCtx.destination);
+  o.start();o.stop(audioCtx.currentTime+d);
 }
 const SND={
   step:()=>play(240,0.07,0.25,"square"),
   dice:()=>play(420,0.2,0.35,"square"),
-  win: ()=>play(520,0.8,0.6,"sine")
+  win:()=>play(520,0.8,0.6,"sine")
 };
 
-/* CANVAS */
+/* ====== BOARD ====== */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
-const SIZE=10;
-const CELL=canvas.width/SIZE;
-const STEP_DELAY=420;
+const SIZE=10,CELL=canvas.width/SIZE,STEP_DELAY=420;
 
-/* BOARD */
-const board=[];
-let n=1;
+const board=[];let n=1;
 for(let r=0;r<SIZE;r++){
   const cols=[...Array(SIZE).keys()];
   if(r%2) cols.reverse();
-  for(const c of cols){ board.push({number:n,row:r,col:c}); n++; }
+  for(const c of cols){board.push({number:n,row:r,col:c});n++;}
 }
 const getCell=num=>board.find(c=>c.number===num);
 const center=c=>({x:c.col*CELL+CELL/2,y:(SIZE-1-c.row)*CELL+CELL/2});
 
-/* STATE */
-let players={}, currentTurn=null;
+/* ====== STATE ====== */
+let players={},currentTurn=null;
 
-/* WS */
+/* ====== WS HANDLERS ====== */
 ws.onmessage=e=>{
-  const { type, data } = JSON.parse(e.data);
+  const {type,data}=JSON.parse(e.data);
 
   if(type==="UPDATE"){
     players=data.players;
     currentTurn=data.turn;
     render();
   }
-
   if(type==="DICE"){
     SND.dice();
     movePlayer(data.id,data.dice);
   }
-
   if(type==="WIN"){
     SND.win();
-    overlayBox.textContent="🏆 ΝΙΚΗΤΗΣ " + data.emoji;
+    overlayBox.textContent="🏆 ΝΙΚΗΤΗΣ "+data.emoji;
     overlay.classList.add("show");
   }
 };
 
-/* DRAW */
+/* ====== DRAW ====== */
 function drawBoard(){
   board.forEach(c=>{
     const x=c.col*CELL,y=(SIZE-1-c.row)*CELL;
@@ -167,33 +136,26 @@ function drawBoard(){
 function drawPlayers(){
   Object.entries(players).forEach(([id,p])=>{
     const c=center(getCell(p.pos));
-    const hop=Math.sin(Date.now()/120)*4;
     ctx.save();
-    ctx.globalAlpha=p.ghost?0.3:1;
     if(id===currentTurn){
-      ctx.beginPath();
-      ctx.arc(c.x,c.y,26,0,Math.PI*2);
-      ctx.strokeStyle="rgba(255,255,255,0.8)";
-      ctx.lineWidth=4;
-      ctx.stroke();
+      ctx.beginPath();ctx.arc(c.x,c.y,26,0,Math.PI*2);
+      ctx.strokeStyle="rgba(255,255,255,.8)";
+      ctx.lineWidth=4;ctx.stroke();
     }
-    ctx.shadowColor="black";
-    ctx.shadowBlur=6;
+    ctx.globalAlpha=p.ghost?0.3:1;
     ctx.font="36px serif";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-    ctx.fillText(p.emoji,c.x,c.y-hop);
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(p.emoji,c.x,c.y);
     ctx.restore();
   });
 }
 
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawBoard();
-  drawPlayers();
+  drawBoard(); drawPlayers();
 }
 
-/* MOVE */
+/* ====== MOVE ====== */
 function movePlayer(id,steps){
   const p=players[id];
   function step(){
@@ -201,17 +163,17 @@ function movePlayer(id,steps){
       ws.send(JSON.stringify({type:"MOVE_DONE",data:{id,pos:p.pos}}));
       return;
     }
-    p.pos++;
-    SND.step();
-    render();
-    steps--;
+    p.pos++; SND.step(); render(); steps--;
     setTimeout(step,STEP_DELAY);
   }
   step();
 }
 
-/* CONTROLS */
-startBtn.onclick=()=>ws.send(JSON.stringify({type:"START"}));
+/* ====== CONTROLS (FIXED) ====== */
+startBtn.onclick=()=>{
+  if(ws.readyState!==1) return alert("WS not ready");
+  ws.send(JSON.stringify({type:"START"}));
+};
 restartBtn.onclick=()=>ws.send(JSON.stringify({type:"RESTART"}));
 muteBtn.onclick=()=>{
   MUTED=!MUTED;
