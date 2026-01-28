@@ -21,7 +21,7 @@ const wss = new WebSocket.Server({ server });
 
 const EMOJIS = ["😎","🤡","🤖","👑","🐱","🐶","🦊","🐸","👻","💀"];
 
-let players = {};     // id -> { emoji, pos, ghost }
+let players = {};
 let turnOrder = [];
 let currentTurn = 0;
 let gameState = "WAITING";
@@ -43,12 +43,7 @@ wss.on("connection", ws => {
 
   ws.send(JSON.stringify({
     type: "INIT",
-    data: {
-      players,
-      turn: turnOrder[currentTurn] || null,
-      gameState,
-      emojis: EMOJIS
-    }
+    data: { players, turn: null, gameState, emojis: EMOJIS }
   }));
 
   ws.on("message", msg => {
