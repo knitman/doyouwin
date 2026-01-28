@@ -18,6 +18,19 @@ canvas{
   background:#0b1d3a;
   border-radius:22px;
 }
+button{
+  position:fixed;
+  top:30px;
+  font-size:18px;
+  padding:10px 18px;
+  border:none;
+  border-radius:12px;
+  font-weight:bold;
+}
+#startBtn{ right:30px; background:#2ecc71; }
+#restartBtn{ right:140px; background:#e74c3c; }
+#muteBtn{ left:30px; background:#444; color:white; }
+
 #qr{
   position:fixed;
   left:30px;
@@ -30,6 +43,7 @@ canvas{
   background:white;
   padding:6px;
 }
+
 .overlay{
   position:fixed;
   inset:0;
@@ -54,6 +68,10 @@ canvas{
 
 <canvas id="board" width="720" height="720"></canvas>
 
+<button id="startBtn">▶ START</button>
+<button id="restartBtn">🔄 RESTART</button>
+<button id="muteBtn">🔊</button>
+
 <div id="qr">
   <div>Scan & Join</div>
   <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=http://localhost:5500/client-phone/index.html">
@@ -64,20 +82,30 @@ canvas{
 </div>
 
 <script>
+/* ========== AUDIO ========== */
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+let MUTED=false;
+function play(f,d,v,t){
+  if(MUTED) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=t; o.frequency.value=f; g.gain.value=v;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+d);
+}
+const SND={
+  step:()=>play(240,0.07,0.25,"square"),
+  dice:()=>play(420,0.2,0.35,"square"),
+  win: ()=>play(520,0.8,0.6,"sine")
+};
+
+/* ========== CANVAS ========== */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
-const overlay=document.getElementById("overlay");
-const overlayBox=document.getElementById("overlayBox");
-
 const SIZE=10;
 const CELL=canvas.width/SIZE;
 const STEP_DELAY=420;
 
-const ws=new WebSocket("ws://localhost:8080");
-
-let players={};
-let currentTurn=null;
-
+/* ========== BOARD ========== */
 const board=[];
 let n=1;
 for(let r=0;r<SIZE;r++){
@@ -88,6 +116,12 @@ for(let r=0;r<SIZE;r++){
 const getCell=num=>board.find(c=>c.number===num);
 const center=c=>({x:c.col*CELL+CELL/2,y:(SIZE-1-c.row)*CELL+CELL/2});
 
+/* ========== STATE ========== */
+let players={};
+let currentTurn=null;
+
+/* ========== WS ========== */
+const ws=new WebSocket("ws://localhost:8080");
 ws.onmessage=e=>{
   const { type, data } = JSON.parse(e.data);
 
@@ -96,17 +130,18 @@ ws.onmessage=e=>{
     currentTurn=data.turn;
     render();
   }
-
   if(type==="DICE"){
+    SND.dice();
     movePlayer(data.id,data.dice);
   }
-
   if(type==="WIN"){
+    SND.win();
     overlayBox.textContent="🏆 ΝΙΚΗΤΗΣ " + data.emoji;
     overlay.classList.add("show");
   }
 };
 
+/* ========== DRAW ========== */
 function drawBoard(){
   board.forEach(c=>{
     const x=c.col*CELL,y=(SIZE-1-c.row)*CELL;
@@ -123,12 +158,25 @@ function drawBoard(){
 }
 
 function drawPlayers(){
-  Object.values(players).forEach(p=>{
+  Object.entries(players).forEach(([id,p])=>{
     const c=center(getCell(p.pos));
+    const hop=Math.sin(Date.now()/120)*4;
+    ctx.save();
+    ctx.globalAlpha=p.ghost?0.3:1;
+    if(id===currentTurn){
+      ctx.beginPath();
+      ctx.arc(c.x,c.y,26,0,Math.PI*2);
+      ctx.strokeStyle="rgba(255,255,255,0.8)";
+      ctx.lineWidth=4;
+      ctx.stroke();
+    }
+    ctx.shadowColor="black";
+    ctx.shadowBlur=6;
     ctx.font="36px serif";
     ctx.textAlign="center";
     ctx.textBaseline="middle";
-    ctx.fillText(p.emoji,c.x,c.y);
+    ctx.fillText(p.emoji,c.x,c.y-hop);
+    ctx.restore();
   });
 }
 
@@ -138,6 +186,7 @@ function render(){
   drawPlayers();
 }
 
+/* ========== MOVE ========== */
 function movePlayer(id,steps){
   const p=players[id];
   function step(){
@@ -146,12 +195,21 @@ function movePlayer(id,steps){
       return;
     }
     p.pos++;
-    steps--;
+    SND.step();
     render();
+    steps--;
     setTimeout(step,STEP_DELAY);
   }
   step();
 }
+
+/* ========== CONTROLS ========== */
+startBtn.onclick=()=>ws.send(JSON.stringify({type:"START"}));
+restartBtn.onclick=()=>location.reload();
+muteBtn.onclick=()=>{
+  MUTED=!MUTED;
+  muteBtn.textContent=MUTED?"🔇":"🔊";
+};
 
 render();
 </script>
