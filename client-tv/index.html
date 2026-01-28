@@ -43,7 +43,6 @@ button{
   background:white;
   padding:6px;
 }
-
 .overlay{
   position:fixed;
   inset:0;
@@ -52,9 +51,8 @@ button{
   align-items:center;
   background:rgba(0,0,0,0.6);
   opacity:0;
-  transition:.25s;
 }
-.overlay.show{opacity:1;}
+.overlay.show{ opacity:1; }
 .box{
   background:linear-gradient(135deg,#ff006e,#8338ec);
   padding:50px 90px;
@@ -74,7 +72,7 @@ button{
 
 <div id="qr">
   <div>Scan & Join</div>
-  <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=http://localhost:5500/client-phone/index.html">
+  <img id="qrImg">
 </div>
 
 <div id="overlay" class="overlay">
@@ -82,7 +80,16 @@ button{
 </div>
 
 <script>
-/* ========== AUDIO ========== */
+const ws = new WebSocket(
+  (location.protocol === "https:" ? "wss://" : "ws://") + location.host
+);
+
+/* QR dynamic */
+document.getElementById("qrImg").src =
+  "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
+  encodeURIComponent(location.origin + "/phone");
+
+/* AUDIO */
 const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
 let MUTED=false;
 function play(f,d,v,t){
@@ -98,14 +105,14 @@ const SND={
   win: ()=>play(520,0.8,0.6,"sine")
 };
 
-/* ========== CANVAS ========== */
+/* CANVAS */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
 const SIZE=10;
 const CELL=canvas.width/SIZE;
 const STEP_DELAY=420;
 
-/* ========== BOARD ========== */
+/* BOARD */
 const board=[];
 let n=1;
 for(let r=0;r<SIZE;r++){
@@ -116,12 +123,10 @@ for(let r=0;r<SIZE;r++){
 const getCell=num=>board.find(c=>c.number===num);
 const center=c=>({x:c.col*CELL+CELL/2,y:(SIZE-1-c.row)*CELL+CELL/2});
 
-/* ========== STATE ========== */
-let players={};
-let currentTurn=null;
+/* STATE */
+let players={}, currentTurn=null;
 
-/* ========== WS ========== */
-const ws=new WebSocket("ws://localhost:8080");
+/* WS */
 ws.onmessage=e=>{
   const { type, data } = JSON.parse(e.data);
 
@@ -130,10 +135,12 @@ ws.onmessage=e=>{
     currentTurn=data.turn;
     render();
   }
+
   if(type==="DICE"){
     SND.dice();
     movePlayer(data.id,data.dice);
   }
+
   if(type==="WIN"){
     SND.win();
     overlayBox.textContent="🏆 ΝΙΚΗΤΗΣ " + data.emoji;
@@ -141,7 +148,7 @@ ws.onmessage=e=>{
   }
 };
 
-/* ========== DRAW ========== */
+/* DRAW */
 function drawBoard(){
   board.forEach(c=>{
     const x=c.col*CELL,y=(SIZE-1-c.row)*CELL;
@@ -186,12 +193,12 @@ function render(){
   drawPlayers();
 }
 
-/* ========== MOVE ========== */
+/* MOVE */
 function movePlayer(id,steps){
   const p=players[id];
   function step(){
     if(steps===0){
-      ws.send(JSON.stringify({ type:"MOVE_DONE", data:{ id, pos:p.pos }}));
+      ws.send(JSON.stringify({type:"MOVE_DONE",data:{id,pos:p.pos}}));
       return;
     }
     p.pos++;
@@ -203,9 +210,9 @@ function movePlayer(id,steps){
   step();
 }
 
-/* ========== CONTROLS ========== */
+/* CONTROLS */
 startBtn.onclick=()=>ws.send(JSON.stringify({type:"START"}));
-restartBtn.onclick=()=>location.reload();
+restartBtn.onclick=()=>ws.send(JSON.stringify({type:"RESTART"}));
 muteBtn.onclick=()=>{
   MUTED=!MUTED;
   muteBtn.textContent=MUTED?"🔇":"🔊";
