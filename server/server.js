@@ -41,7 +41,7 @@ wss.on("connection", ws=>{
     }
 
     if(type==="START" && gameState==="WAITING"){
-      if(turnOrder.length < 1) return;
+      if(turnOrder.length === 0) return;
       gameState="PLAYING";
       broadcast("UPDATE",{ players, turn: turnOrder[currentTurn], gameState });
     }
@@ -77,4 +77,4 @@ wss.on("connection", ws=>{
   });
 });
 
-console.log("🟢 Server running ws://localhost:8080");
+console.log("🟢 Server running on ws://localhost:8080");
