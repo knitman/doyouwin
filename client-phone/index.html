@@ -1,276 +1,87 @@
 <!DOCTYPE html>
 <html lang="el">
 <head>
-<meta charset="UTF-8" />
-<title>Party Board – Dense Chaos Edition</title>
+<meta charset="UTF-8">
+<title>Pick Emoji</title>
 <style>
-  body{
-    margin:0;
-    background:#050505;
-    color:white;
-    font-family:Arial;
-    height:100vh;
-    overflow:hidden;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-  }
-  canvas{
-    background:#0b1d3a;
-    border-radius:22px;
-  }
-  #rollBtn{
-    position:fixed;
-    bottom:40px;
-    right:40px;
-    font-size:26px;
-    padding:16px 30px;
-    border:none;
-    border-radius:18px;
-    background:#ffbe0b;
-    font-weight:bold;
-    cursor:pointer;
-    z-index:5;
-  }
-  #rollBtn:disabled{opacity:0.4;}
-
-  .overlay{
-    position:fixed;
-    inset:0;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    background:rgba(0,0,0,0.6);
-    opacity:0;
-    pointer-events:none;
-    transition:.25s;
-    z-index:10;
-  }
-  .overlay.show{opacity:1;}
-  .box{
-    background:linear-gradient(135deg,#ff006e,#8338ec);
-    padding:50px 90px;
-    border-radius:50px;
-    font-size:46px;
-    font-weight:bold;
-    box-shadow:0 0 60px rgba(255,0,110,.8);
-  }
+body{
+  margin:0;
+  font-family:Arial;
+  background:#111;
+  color:white;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(5,60px);
+  gap:14px;
+}
+.emoji{
+  font-size:40px;
+  padding:10px;
+  background:#222;
+  border-radius:14px;
+  cursor:pointer;
+}
+.emoji.selected{
+  background:#ff006e;
+}
+button{
+  margin-top:30px;
+  padding:14px 30px;
+  font-size:20px;
+  border:none;
+  border-radius:14px;
+  background:#ffbe0b;
+  font-weight:bold;
+}
 </style>
 </head>
 <body>
 
-<canvas id="board" width="720" height="720"></canvas>
-<button id="rollBtn">🎲 ROLL</button>
-
-<div id="eventOverlay" class="overlay">
-  <div id="eventBox" class="box"></div>
-</div>
-<div id="turnOverlay" class="overlay">
-  <div id="turnBox" class="box"></div>
-</div>
+<h2>Διάλεξε πιόνι</h2>
+<div class="grid" id="grid"></div>
+<button id="ready">ΕΙΜΑΙ ΕΤΟΙΜΟΣ</button>
 
 <script>
-/* ========== AUDIO (WOODEN) ========== */
-const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-function playTone(f,d,v,t){
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type=t; o.frequency.value=f; g.gain.value=v;
-  o.connect(g); g.connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+d);
-}
-const sndDice  = () => playTone(380,0.15,0.08,"square");
-const sndStep  = () => playTone(240,0.07,0.09,"square"); // 🪵
-const sndEvent = () => playTone(180,0.35,0.10,"sawtooth");
+const ws = new WebSocket("ws://localhost:8080");
+const grid = document.getElementById("grid");
+let selected = null;
+let emojis = [];
 
-/* ========== GAME CORE ========== */
-const canvas=document.getElementById("board");
-const ctx=canvas.getContext("2d");
-const rollBtn=document.getElementById("rollBtn");
-const eventOverlay=document.getElementById("eventOverlay");
-const eventBox=document.getElementById("eventBox");
-const turnOverlay=document.getElementById("turnOverlay");
-const turnBox=document.getElementById("turnBox");
-
-const SIZE=10;
-const CELL=canvas.width/SIZE;
-const STEP_DELAY=420;
-
-/* board */
-const board=[];
-let n=1;
-for(let r=0;r<SIZE;r++){
-  const cols=[...Array(SIZE).keys()];
-  if(r%2===1) cols.reverse();
-  for(const c of cols){ board.push({number:n,row:r,col:c}); n++; }
-}
-const getCell=num=>board.find(c=>c.number===num);
-const center=c=>({x:c.col*CELL+CELL/2,y:(SIZE-1-c.row)*CELL+CELL/2});
-
-/* 🔥 MANY EVENTS 🔥 */
-const events={
-  4:{shape:"square",action:"RANDOM"},
-  6:{shape:"circle",action:"FORWARD_2"},
-  8:{shape:"triangle",action:"BACK_2"},
-  11:{shape:"square",action:"TELEPORT"},
-  14:{shape:"circle",action:"BONUS"},
-  16:{shape:"triangle",action:"SKIP"},
-  19:{shape:"square",action:"RANDOM"},
-  22:{shape:"circle",action:"FORWARD_3"},
-  24:{shape:"triangle",action:"BACK_3"},
-  27:{shape:"square",action:"TELEPORT"},
-  30:{shape:"circle",action:"BONUS"},
-  33:{shape:"square",action:"RANDOM"},
-  36:{shape:"triangle",action:"BACK_5"},
-  39:{shape:"circle",action:"FORWARD_2"},
-  42:{shape:"square",action:"TELEPORT"},
-  45:{shape:"triangle",action:"SKIP"},
-  48:{shape:"circle",action:"FORWARD_3"},
-  51:{shape:"square",action:"RANDOM"},
-  54:{shape:"triangle",action:"BACK_3"},
-  57:{shape:"circle",action:"BONUS"},
-  60:{shape:"square",action:"TELEPORT"},
-  63:{shape:"triangle",action:"BACK_2"},
-  66:{shape:"square",action:"RANDOM"},
-  69:{shape:"circle",action:"FORWARD_2"},
-  72:{shape:"triangle",action:"SKIP"},
-  75:{shape:"square",action:"TELEPORT"},
-  78:{shape:"circle",action:"FORWARD_3"},
-  81:{shape:"square",action:"RANDOM"},
-  84:{shape:"triangle",action:"BACK_5"},
-  87:{shape:"circle",action:"BONUS"},
-  90:{shape:"square",action:"TELEPORT"},
-  93:{shape:"triangle",action:"BACK_3"},
-  96:{shape:"square",action:"RANDOM"}
+ws.onmessage = e=>{
+  const { type, data } = JSON.parse(e.data);
+  if(type==="INIT"){
+    emojis = data.emojis;
+    render(data.players);
+  }
+  if(type==="UPDATE"){
+    render(data);
+  }
 };
 
-/* players */
-const players=[
-  {name:"Α",color:"#ffbe0b",pos:1,skip:false},
-  {name:"Β",color:"#4cc9f0",pos:1,skip:false},
-  {name:"Γ",color:"#80ed99",pos:1,skip:false}
-];
-let current=0;
-
-/* draw */
-function drawBoard(){
-  board.forEach(c=>{
-    const x=c.col*CELL,y=(SIZE-1-c.row)*CELL;
-    ctx.fillStyle=(c.number%2===0)?"#1e90ff":"#00b4d8";
-    ctx.fillRect(x,y,CELL,CELL);
-    ctx.strokeStyle="#03045e";
-    ctx.strokeRect(x,y,CELL,CELL);
-    ctx.fillStyle="#fff";
-    ctx.font=`bold ${CELL*0.4}px Arial`;
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-    ctx.fillText(c.number,x+CELL/2,y+CELL/2);
+function render(players){
+  grid.innerHTML="";
+  emojis.forEach(e=>{
+    const used = Object.values(players).some(p=>p.emoji===e);
+    const div=document.createElement("div");
+    div.className="emoji"+(selected===e?" selected":"");
+    div.textContent=e;
+    if(used) div.style.opacity=0.3;
+    else div.onclick=()=>{selected=e; render(players);}
+    grid.appendChild(div);
   });
 }
-function drawEvents(){
-  Object.entries(events).forEach(([num,e])=>{
-    const c=getCell(+num);
-    const cx=c.col*CELL+CELL/2;
-    const cy=(SIZE-1-c.row)*CELL+CELL/2;
-    const s=CELL*0.25;
-    ctx.save();ctx.translate(cx,cy);
-    if(e.shape==="circle"){ctx.fillStyle="#2ecc71";ctx.beginPath();ctx.arc(0,0,s,0,Math.PI*2);ctx.fill();}
-    if(e.shape==="triangle"){ctx.fillStyle="#e74c3c";ctx.beginPath();ctx.moveTo(0,-s);ctx.lineTo(s,s);ctx.lineTo(-s,s);ctx.fill();}
-    if(e.shape==="square"){ctx.fillStyle="#9b59b6";ctx.fillRect(-s,-s,s*2,s*2);}
-    ctx.restore();
-  });
-}
-function drawPlayers(){
-  const grouped={};
-  players.forEach(p=>{
-    if(!grouped[p.pos]) grouped[p.pos]=[];
-    grouped[p.pos].push(p);
-  });
-  Object.entries(grouped).forEach(([pos,list])=>{
-    const c=center(getCell(+pos));
-    list.forEach((p,i)=>{
-      const a=(i/list.length)*Math.PI*2;
-      ctx.fillStyle=p.color;
-      ctx.beginPath();
-      ctx.arc(
-        c.x+Math.cos(a)*CELL*0.2,
-        c.y+Math.sin(a)*CELL*0.2,
-        CELL*0.18,0,Math.PI*2
-      );
-      ctx.fill();
-    });
-  });
-}
-function render(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawBoard();drawEvents();drawPlayers();
-}
 
-/* overlays */
-function showEvent(t){
-  sndEvent();
-  eventBox.textContent=t;
-  eventOverlay.classList.add("show");
-  setTimeout(()=>eventOverlay.classList.remove("show"),2500);
-}
-function showTurn(){
-  turnBox.textContent=`🎯 ΠΑΙΖΕΙ Ο ${players[current].name}`;
-  turnOverlay.classList.add("show");
-  setTimeout(()=>turnOverlay.classList.remove("show"),2000);
-}
-
-/* actions */
-function runAction(p,a){
-  switch(a){
-    case "BONUS": showEvent("🎉 ΞΑΝΑΡΙΞΕ!"); return true;
-    case "FORWARD_2": p.pos+=2; showEvent("🚀 ΜΠΡΟΣΤΑ 2"); break;
-    case "FORWARD_3": p.pos+=3; showEvent("🚀 ΜΠΡΟΣΤΑ 3"); break;
-    case "BACK_2": p.pos=Math.max(1,p.pos-2); showEvent("🔻 ΠΙΣΩ 2"); break;
-    case "BACK_3": p.pos=Math.max(1,p.pos-3); showEvent("🔻 ΠΙΣΩ 3"); break;
-    case "BACK_5": p.pos=Math.max(1,p.pos-5); showEvent("🔻 ΠΙΣΩ 5"); break;
-    case "SKIP": p.skip=true; showEvent("⛔ ΧΑΝΕΙΣ ΓΥΡΟ"); break;
-    case "TELEPORT": p.pos=Math.floor(Math.random()*100)+1; showEvent("🌀 TELEPORT!"); break;
-    case "RANDOM":
-      const r=Math.floor(Math.random()*6)+1;
-      p.pos+=r; showEvent("🎲 RANDOM +"+r); break;
-  }
-  p.pos=Math.min(100,p.pos);
-  return false;
-}
-
-/* game */
-rollBtn.onclick=()=>{
-  audioCtx.resume();
-  const p=players[current];
-  if(p.skip){
-    showEvent("⏭️ ΧΑΝΕΙΣ ΓΥΡΟ");
-    p.skip=false;
-    current=(current+1)%players.length;
-    showTurn(); return;
-  }
-  sndDice();
-  let steps=Math.floor(Math.random()*6)+1;
-  rollBtn.disabled=true;
-
-  function step(){
-    if(steps===0){
-      let again=false;
-      if(events[p.pos]) again=runAction(p,events[p.pos].action);
-      render();
-      rollBtn.disabled=false;
-      if(!again){ current=(current+1)%players.length; showTurn(); }
-      return;
-    }
-    p.pos++;
-    sndStep();
-    steps--;
-    render();
-    setTimeout(step, STEP_DELAY);
-  }
-  step();
+document.getElementById("ready").onclick=()=>{
+  if(!selected) return;
+  ws.send(JSON.stringify({ type:"JOIN", data:{ emoji:selected } }));
 };
-
-showTurn();
-render();
 </script>
+
 </body>
 </html>
