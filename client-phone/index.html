@@ -5,38 +5,18 @@
 <title>Party Player</title>
 <style>
 body{
-  margin:0;
-  background:#111;
-  color:white;
-  font-family:Arial;
-  height:100vh;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
+  margin:0;background:#111;color:white;font-family:Arial;
+  height:100vh;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;
 }
-.grid{
-  display:grid;
-  grid-template-columns:repeat(5,64px);
-  gap:16px;
-}
-.emoji{
-  font-size:42px;
-  background:#222;
-  padding:12px;
-  border-radius:16px;
-}
-.emoji.selected{ background:#ff006e; }
+.grid{display:grid;grid-template-columns:repeat(5,64px);gap:16px;}
+.emoji{font-size:42px;background:#222;padding:12px;border-radius:16px;}
+.emoji.selected{background:#ff006e;}
 button{
-  margin-top:32px;
-  padding:16px 36px;
-  font-size:22px;
-  border:none;
-  border-radius:16px;
-  background:#ffbe0b;
-  font-weight:bold;
+  margin-top:32px;padding:16px 36px;font-size:22px;
+  border:none;border-radius:16px;background:#ffbe0b;font-weight:bold;
 }
-button:disabled{ opacity:0.4; }
+button:disabled{opacity:0.4;}
 </style>
 </head>
 <body>
@@ -47,36 +27,30 @@ button:disabled{ opacity:0.4; }
 
 <script>
 const ws = new WebSocket(
-  (location.protocol === "https:" ? "wss://" : "ws://") + location.host
+  (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
-const grid = document.getElementById("grid");
-const btn = document.getElementById("action");
-const title = document.getElementById("title");
+const grid=document.getElementById("grid");
+const btn=document.getElementById("action");
+const title=document.getElementById("title");
 
-let emojis=[], players={}, selected=null;
-let myTurn=false, gameState="WAITING";
+let emojis=[],players={},selected=null;
+let myTurn=false,gameState="WAITING";
 
-ws.onmessage = e => {
-  const { type, data } = JSON.parse(e.data);
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
 
   if(type==="INIT"){
-    emojis=data.emojis;
-    players=data.players;
-    gameState=data.gameState;
+    emojis=data.emojis; players=data.players; gameState=data.gameState;
     render();
   }
-
   if(type==="UPDATE"){
-    players=data.players;
-    gameState=data.gameState;
-    myTurn = data.turn && players[data.turn]?.emoji === selected;
-    render();
-    updateUI();
+    players=data.players; gameState=data.gameState;
+    myTurn=data.turn && players[data.turn]?.emoji===selected;
+    render(); updateUI();
   }
-
   if(type==="WIN"){
-    title.textContent="🏆 Νικητής " + data.emoji;
+    title.textContent="🏆 Νικητής "+data.emoji;
     btn.disabled=true;
   }
 };
@@ -84,15 +58,12 @@ ws.onmessage = e => {
 function render(){
   grid.innerHTML="";
   emojis.forEach(e=>{
-    const used = Object.values(players).some(p=>p.emoji===e);
+    const used=Object.values(players).some(p=>p.emoji===e);
     const d=document.createElement("div");
     d.className="emoji"+(selected===e?" selected":"");
     d.textContent=e;
-    if(!used){
-      d.onclick=()=>{ selected=e; render(); };
-    }else{
-      d.style.opacity=0.3;
-    }
+    if(!used) d.onclick=()=>{selected=e;render();}
+    else d.style.opacity=0.3;
     grid.appendChild(d);
   });
 }
@@ -100,14 +71,12 @@ function render(){
 function updateUI(){
   if(gameState!=="PLAYING"){
     title.textContent="Περίμενε να ξεκινήσει";
-    btn.disabled=true;
-    return;
+    btn.disabled=true; return;
   }
   if(myTurn){
     title.textContent="🎯 Η ΣΕΙΡΑ ΣΟΥ";
     btn.textContent="ROLL 🎲";
     btn.disabled=false;
-    navigator.vibrate?.(200);
   }else{
     title.textContent="⏳ ΠΕΡΙΜΕΝΕ";
     btn.disabled=true;
