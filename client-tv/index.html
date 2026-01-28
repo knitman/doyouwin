@@ -1,66 +1,87 @@
 <!DOCTYPE html>
 <html lang="el">
 <head>
-<meta charset="UTF-8" />
-<title>Party Board – Dense Chaos Edition</title>
+<meta charset="UTF-8">
+<title>ΜΠΟΡΕΙΣ ΝΑ ΚΕΡΔΙΣΕΙΣ</title>
 <style>
-  body{
-    margin:0;
-    background:#050505;
-    color:white;
-    font-family:Arial;
-    height:100vh;
-    overflow:hidden;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-  }
-  canvas{
-    background:#0b1d3a;
-    border-radius:22px;
-  }
-  #rollBtn{
-    position:fixed;
-    bottom:40px;
-    right:40px;
-    font-size:26px;
-    padding:16px 30px;
-    border:none;
-    border-radius:18px;
-    background:#ffbe0b;
-    font-weight:bold;
-    cursor:pointer;
-    z-index:5;
-  }
-  #rollBtn:disabled{opacity:0.4;}
+body{
+  margin:0;
+  background:#050505;
+  color:white;
+  font-family:Arial;
+  height:100vh;
+  overflow:hidden;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+canvas{
+  background:#0b1d3a;
+  border-radius:22px;
+}
+#rollBtn{
+  position:fixed;
+  bottom:40px;
+  right:40px;
+  font-size:26px;
+  padding:16px 30px;
+  border:none;
+  border-radius:18px;
+  background:#ffbe0b;
+  font-weight:bold;
+  cursor:pointer;
+  z-index:5;
+}
+#rollBtn:disabled{opacity:0.4;}
 
-  .overlay{
-    position:fixed;
-    inset:0;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    background:rgba(0,0,0,0.6);
-    opacity:0;
-    pointer-events:none;
-    transition:.25s;
-    z-index:10;
-  }
-  .overlay.show{opacity:1;}
-  .box{
-    background:linear-gradient(135deg,#ff006e,#8338ec);
-    padding:50px 90px;
-    border-radius:50px;
-    font-size:46px;
-    font-weight:bold;
-    box-shadow:0 0 60px rgba(255,0,110,.8);
-  }
+.overlay{
+  position:fixed;
+  inset:0;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:rgba(0,0,0,0.6);
+  opacity:0;
+  pointer-events:none;
+  transition:.25s;
+  z-index:10;
+}
+.overlay.show{opacity:1;}
+.box{
+  background:linear-gradient(135deg,#ff006e,#8338ec);
+  padding:50px 90px;
+  border-radius:50px;
+  font-size:46px;
+  font-weight:bold;
+  box-shadow:0 0 60px rgba(255,0,110,.8);
+}
+
+#qr{
+  position:fixed;
+  left:30px;
+  bottom:30px;
+  text-align:center;
+  font-size:14px;
+  opacity:0.85;
+}
+#qr img{
+  width:140px;
+  height:140px;
+  border-radius:16px;
+  background:white;
+  padding:6px;
+}
 </style>
 </head>
 <body>
 
 <canvas id="board" width="720" height="720"></canvas>
 <button id="rollBtn">🎲 ROLL</button>
+
+<div id="qr">
+  <div>Scan &amp; Pick Emoji</div>
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=http://localhost:5500/client-phone/index.html">
+</div>
 
 <div id="eventOverlay" class="overlay">
   <div id="eventBox" class="box"></div>
@@ -70,43 +91,37 @@
 </div>
 
 <script>
-/* ========== AUDIO (WOODEN) ========== */
-const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-function playTone(f,d,v,t){
+/* ================= AUDIO ================= */
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+function tone(f,d,v,t){
   const o=audioCtx.createOscillator(), g=audioCtx.createGain();
   o.type=t; o.frequency.value=f; g.gain.value=v;
   o.connect(g); g.connect(audioCtx.destination);
   o.start(); o.stop(audioCtx.currentTime+d);
 }
-const sndDice  = () => playTone(380,0.15,0.08,"square");
-const sndStep  = () => playTone(240,0.07,0.09,"square"); // 🪵
-const sndEvent = () => playTone(180,0.35,0.10,"sawtooth");
+const sndDice=()=>tone(380,0.15,0.08,"square");
+const sndStep=()=>tone(240,0.07,0.09,"square"); // ξύλινο
+const sndEvent=()=>tone(180,0.35,0.10,"sawtooth");
 
-/* ========== GAME CORE ========== */
+/* ================= CANVAS ================= */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
-const rollBtn=document.getElementById("rollBtn");
-const eventOverlay=document.getElementById("eventOverlay");
-const eventBox=document.getElementById("eventBox");
-const turnOverlay=document.getElementById("turnOverlay");
-const turnBox=document.getElementById("turnBox");
-
 const SIZE=10;
 const CELL=canvas.width/SIZE;
 const STEP_DELAY=420;
 
-/* board */
+/* ================= BOARD ================= */
 const board=[];
 let n=1;
 for(let r=0;r<SIZE;r++){
   const cols=[...Array(SIZE).keys()];
   if(r%2===1) cols.reverse();
-  for(const c of cols){ board.push({number:n,row:r,col:c}); n++; }
+  for(const c of cols){board.push({number:n,row:r,col:c});n++;}
 }
 const getCell=num=>board.find(c=>c.number===num);
 const center=c=>({x:c.col*CELL+CELL/2,y:(SIZE-1-c.row)*CELL+CELL/2});
 
-/* 🔥 MANY EVENTS 🔥 */
+/* ================= EVENTS ================= */
 const events={
   4:{shape:"square",action:"RANDOM"},
   6:{shape:"circle",action:"FORWARD_2"},
@@ -143,15 +158,24 @@ const events={
   96:{shape:"square",action:"RANDOM"}
 };
 
-/* players */
-const players=[
-  {name:"Α",color:"#ffbe0b",pos:1,skip:false},
-  {name:"Β",color:"#4cc9f0",pos:1,skip:false},
-  {name:"Γ",color:"#80ed99",pos:1,skip:false}
-];
-let current=0;
+/* ================= PLAYERS FROM SERVER ================= */
+let players=[];
 
-/* draw */
+/* ================= WEBSOCKET ================= */
+const ws=new WebSocket("ws://localhost:8080");
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
+  if(type==="UPDATE"){
+    players=Object.values(data).map(p=>({
+      emoji:p.emoji,
+      pos:1,
+      skip:false
+    }));
+    render();
+  }
+};
+
+/* ================= DRAW ================= */
 function drawBoard(){
   board.forEach(c=>{
     const x=c.col*CELL,y=(SIZE-1-c.row)*CELL;
@@ -166,6 +190,7 @@ function drawBoard(){
     ctx.fillText(c.number,x+CELL/2,y+CELL/2);
   });
 }
+
 function drawEvents(){
   Object.entries(events).forEach(([num,e])=>{
     const c=getCell(+num);
@@ -179,6 +204,7 @@ function drawEvents(){
     ctx.restore();
   });
 }
+
 function drawPlayers(){
   const grouped={};
   players.forEach(p=>{
@@ -189,87 +215,25 @@ function drawPlayers(){
     const c=center(getCell(+pos));
     list.forEach((p,i)=>{
       const a=(i/list.length)*Math.PI*2;
-      ctx.fillStyle=p.color;
-      ctx.beginPath();
-      ctx.arc(
-        c.x+Math.cos(a)*CELL*0.2,
-        c.y+Math.sin(a)*CELL*0.2,
-        CELL*0.18,0,Math.PI*2
+      ctx.font="36px serif";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText(
+        p.emoji,
+        c.x+Math.cos(a)*CELL*0.22,
+        c.y+Math.sin(a)*CELL*0.22
       );
-      ctx.fill();
     });
   });
 }
+
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawBoard();drawEvents();drawPlayers();
+  drawBoard();
+  drawEvents();
+  drawPlayers();
 }
 
-/* overlays */
-function showEvent(t){
-  sndEvent();
-  eventBox.textContent=t;
-  eventOverlay.classList.add("show");
-  setTimeout(()=>eventOverlay.classList.remove("show"),2500);
-}
-function showTurn(){
-  turnBox.textContent=`🎯 ΠΑΙΖΕΙ Ο ${players[current].name}`;
-  turnOverlay.classList.add("show");
-  setTimeout(()=>turnOverlay.classList.remove("show"),2000);
-}
-
-/* actions */
-function runAction(p,a){
-  switch(a){
-    case "BONUS": showEvent("🎉 ΞΑΝΑΡΙΞΕ!"); return true;
-    case "FORWARD_2": p.pos+=2; showEvent("🚀 ΜΠΡΟΣΤΑ 2"); break;
-    case "FORWARD_3": p.pos+=3; showEvent("🚀 ΜΠΡΟΣΤΑ 3"); break;
-    case "BACK_2": p.pos=Math.max(1,p.pos-2); showEvent("🔻 ΠΙΣΩ 2"); break;
-    case "BACK_3": p.pos=Math.max(1,p.pos-3); showEvent("🔻 ΠΙΣΩ 3"); break;
-    case "BACK_5": p.pos=Math.max(1,p.pos-5); showEvent("🔻 ΠΙΣΩ 5"); break;
-    case "SKIP": p.skip=true; showEvent("⛔ ΧΑΝΕΙΣ ΓΥΡΟ"); break;
-    case "TELEPORT": p.pos=Math.floor(Math.random()*100)+1; showEvent("🌀 TELEPORT!"); break;
-    case "RANDOM":
-      const r=Math.floor(Math.random()*6)+1;
-      p.pos+=r; showEvent("🎲 RANDOM +"+r); break;
-  }
-  p.pos=Math.min(100,p.pos);
-  return false;
-}
-
-/* game */
-rollBtn.onclick=()=>{
-  audioCtx.resume();
-  const p=players[current];
-  if(p.skip){
-    showEvent("⏭️ ΧΑΝΕΙΣ ΓΥΡΟ");
-    p.skip=false;
-    current=(current+1)%players.length;
-    showTurn(); return;
-  }
-  sndDice();
-  let steps=Math.floor(Math.random()*6)+1;
-  rollBtn.disabled=true;
-
-  function step(){
-    if(steps===0){
-      let again=false;
-      if(events[p.pos]) again=runAction(p,events[p.pos].action);
-      render();
-      rollBtn.disabled=false;
-      if(!again){ current=(current+1)%players.length; showTurn(); }
-      return;
-    }
-    p.pos++;
-    sndStep();
-    steps--;
-    render();
-    setTimeout(step, STEP_DELAY);
-  }
-  step();
-};
-
-showTurn();
 render();
 </script>
 </body>
