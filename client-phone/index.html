@@ -17,22 +17,22 @@ body{
 }
 .grid{
   display:grid;
-  grid-template-columns:repeat(5,60px);
-  gap:14px;
+  grid-template-columns:repeat(5,64px);
+  gap:16px;
 }
 .emoji{
-  font-size:40px;
+  font-size:42px;
   background:#222;
-  padding:10px;
-  border-radius:14px;
+  padding:12px;
+  border-radius:16px;
 }
 .emoji.selected{background:#ff006e;}
 button{
-  margin-top:30px;
-  padding:14px 30px;
-  font-size:20px;
+  margin-top:32px;
+  padding:16px 36px;
+  font-size:22px;
   border:none;
-  border-radius:14px;
+  border-radius:16px;
   background:#ffbe0b;
   font-weight:bold;
 }
@@ -55,6 +55,7 @@ let emojis=[];
 let players={};
 let selected=null;
 let myTurn=false;
+let gameState="WAITING";
 
 ws.onmessage = e=>{
   const { type, data } = JSON.parse(e.data);
@@ -62,11 +63,13 @@ ws.onmessage = e=>{
   if(type==="INIT"){
     emojis=data.emojis;
     players=data.players;
+    gameState=data.gameState;
     render();
   }
 
   if(type==="UPDATE"){
     players=data.players;
+    gameState=data.gameState;
     myTurn = data.turn && players[data.turn]?.emoji === selected;
     render();
     updateUI();
@@ -95,22 +98,27 @@ function render(){
 }
 
 function updateUI(){
-  if(selected && myTurn){
-    title.textContent="Η ΣΕΙΡΑ ΣΟΥ!";
+  if(gameState!=="PLAYING"){
+    title.textContent="Περίμενε να ξεκινήσει";
+    btn.disabled=true;
+    return;
+  }
+  if(myTurn){
+    title.textContent="🎯 Η ΣΕΙΡΑ ΣΟΥ";
     btn.textContent="ROLL 🎲";
     btn.disabled=false;
+    navigator.vibrate?.(200);
   }else{
-    title.textContent="Περίμενε…";
+    title.textContent="⏳ ΠΕΡΙΜΕΝΕ";
     btn.disabled=true;
   }
 }
 
 btn.onclick=()=>{
-  if(selected){
+  if(gameState==="WAITING" && selected){
     ws.send(JSON.stringify({ type:"JOIN", data:{ emoji:selected }}));
     btn.disabled=true;
-  }
-  if(myTurn){
+  }else if(myTurn){
     ws.send(JSON.stringify({ type:"ROLL" }));
   }
 };
