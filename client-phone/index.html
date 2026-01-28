@@ -2,18 +2,18 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8">
-<title>Pick Emoji</title>
+<title>Player</title>
 <style>
 body{
   margin:0;
-  font-family:Arial;
   background:#111;
   color:white;
+  font-family:Arial;
+  height:100vh;
   display:flex;
   flex-direction:column;
-  align-items:center;
   justify-content:center;
-  height:100vh;
+  align-items:center;
 }
 .grid{
   display:grid;
@@ -22,14 +22,11 @@ body{
 }
 .emoji{
   font-size:40px;
-  padding:10px;
   background:#222;
+  padding:10px;
   border-radius:14px;
-  cursor:pointer;
 }
-.emoji.selected{
-  background:#ff006e;
-}
+.emoji.selected{background:#ff006e;}
 button{
   margin-top:30px;
   padding:14px 30px;
@@ -43,44 +40,63 @@ button{
 </head>
 <body>
 
-<h2>Διάλεξε πιόνι</h2>
+<h2 id="title">Διάλεξε πιόνι</h2>
 <div class="grid" id="grid"></div>
-<button id="ready">ΕΙΜΑΙ ΕΤΟΙΜΟΣ</button>
+<button id="action">ΕΤΟΙΜΟΣ</button>
 
 <script>
-const ws = new WebSocket("ws://localhost:8080");
-const grid = document.getElementById("grid");
-let selected = null;
-let emojis = [];
+const ws=new WebSocket("ws://localhost:8080");
+const emojis=["😎","🤡","🤖","👑","🐱","🐶","🦊","🐸","👻","💀"];
+let selected=null;
+let myId=null;
+let currentTurn=null;
+const grid=document.getElementById("grid");
+const btn=document.getElementById("action");
+const title=document.getElementById("title");
 
-ws.onmessage = e=>{
-  const { type, data } = JSON.parse(e.data);
-  if(type==="INIT"){
-    emojis = data.emojis;
-    render(data.players);
-  }
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
+
+  if(type==="INIT") render(data.players);
   if(type==="UPDATE"){
-    render(data);
+    currentTurn=data.turn;
+    render(data.players);
+    updateUI();
   }
 };
 
 function render(players){
   grid.innerHTML="";
   emojis.forEach(e=>{
-    const used = Object.values(players).some(p=>p.emoji===e);
-    const div=document.createElement("div");
-    div.className="emoji"+(selected===e?" selected":"");
-    div.textContent=e;
-    if(used) div.style.opacity=0.3;
-    else div.onclick=()=>{selected=e; render(players);}
-    grid.appendChild(div);
+    const used=Object.values(players).some(p=>p.emoji===e);
+    const d=document.createElement("div");
+    d.className="emoji"+(selected===e?" selected":"");
+    d.textContent=e;
+    if(!used) d.onclick=()=>{selected=e; render(players);}
+    else d.style.opacity=0.3;
+    grid.appendChild(d);
   });
 }
 
-document.getElementById("ready").onclick=()=>{
-  if(!selected) return;
-  ws.send(JSON.stringify({ type:"JOIN", data:{ emoji:selected } }));
+btn.onclick=()=>{
+  if(!myId && selected){
+    ws.send(JSON.stringify({type:"JOIN",data:{emoji:selected}}));
+    myId=ws;
+    title.textContent="Περιμένε τη σειρά σου";
+    btn.textContent="ROLL 🎲";
+  }else{
+    ws.send(JSON.stringify({type:"ROLL"}));
+  }
 };
+
+function updateUI(){
+  if(currentTurn && ws.id===currentTurn){
+    btn.disabled=false;
+    title.textContent="Η ΣΕΙΡΑ ΣΟΥ!";
+  }else{
+    btn.disabled=true;
+  }
+}
 </script>
 
 </body>
