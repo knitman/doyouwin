@@ -26,7 +26,7 @@ body{
   padding:12px;
   border-radius:16px;
 }
-.emoji.selected{background:#ff006e;}
+.emoji.selected{ background:#ff006e; }
 button{
   margin-top:32px;
   padding:16px 36px;
@@ -36,7 +36,7 @@ button{
   background:#ffbe0b;
   font-weight:bold;
 }
-button:disabled{opacity:0.4;}
+button:disabled{ opacity:0.4; }
 </style>
 </head>
 <body>
@@ -46,18 +46,18 @@ button:disabled{opacity:0.4;}
 <button id="action">ΕΤΟΙΜΟΣ</button>
 
 <script>
-const ws = new WebSocket("ws://localhost:8080");
+const ws = new WebSocket(
+  (location.protocol === "https:" ? "wss://" : "ws://") + location.host
+);
+
 const grid = document.getElementById("grid");
 const btn = document.getElementById("action");
 const title = document.getElementById("title");
 
-let emojis=[];
-let players={};
-let selected=null;
-let myTurn=false;
-let gameState="WAITING";
+let emojis=[], players={}, selected=null;
+let myTurn=false, gameState="WAITING";
 
-ws.onmessage = e=>{
+ws.onmessage = e => {
   const { type, data } = JSON.parse(e.data);
 
   if(type==="INIT"){
@@ -89,7 +89,7 @@ function render(){
     d.className="emoji"+(selected===e?" selected":"");
     d.textContent=e;
     if(!used){
-      d.onclick=()=>{selected=e; render();}
+      d.onclick=()=>{ selected=e; render(); };
     }else{
       d.style.opacity=0.3;
     }
@@ -116,13 +116,12 @@ function updateUI(){
 
 btn.onclick=()=>{
   if(gameState==="WAITING" && selected){
-    ws.send(JSON.stringify({ type:"JOIN", data:{ emoji:selected }}));
+    ws.send(JSON.stringify({type:"JOIN",data:{emoji:selected}}));
     btn.disabled=true;
   }else if(myTurn){
-    ws.send(JSON.stringify({ type:"ROLL" }));
+    ws.send(JSON.stringify({type:"ROLL"}));
   }
 };
 </script>
-
 </body>
 </html>
