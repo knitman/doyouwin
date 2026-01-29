@@ -5,114 +5,317 @@
 <title>Party Board TV</title>
 <style>
 body{
- margin:0;background:#050505;color:white;font-family:Arial;
- height:100vh;display:flex;justify-content:center;align-items:center;
+  margin:0;
+  background:#050505;
+  color:white;
+  font-family:Arial;
+  height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
 }
-canvas{background:#0b1d3a;border-radius:22px;}
-#diceOverlay{
- position:fixed;inset:0;display:flex;justify-content:center;
- align-items:center;font-size:120px;font-weight:bold;
- opacity:0;pointer-events:none;
+canvas{
+  background:#0b1d3a;
+  border-radius:22px;
 }
-#diceOverlay.show{opacity:1;}
+button{
+  position:fixed;
+  top:30px;
+  font-size:18px;
+  padding:10px 18px;
+  border:none;
+  border-radius:12px;
+  font-weight:bold;
+  cursor:pointer;
+  z-index:10;
+}
+#startBtn{ right:30px; background:#2ecc71; }
+#restartBtn{ right:140px; background:#e74c3c; }
+#muteBtn{ left:30px; background:#444; color:white; }
+
+#qr{
+  position:fixed;
+  left:30px;
+  bottom:30px;
+  text-align:center;
+  z-index:5;
+}
+#qr img{
+  width:140px;
+  border-radius:14px;
+  background:white;
+  padding:6px;
+}
+
+/* overlays */
+.overlay{
+  position:fixed;
+  inset:0;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:rgba(0,0,0,0.6);
+  opacity:0;
+  pointer-events:none;
+  z-index:20;
+}
+.overlay.show{
+  opacity:1;
+  pointer-events:auto;
+}
+.box{
+  background:linear-gradient(135deg,#ff006e,#8338ec);
+  padding:50px 90px;
+  border-radius:50px;
+  font-size:42px;
+  font-weight:bold;
+  text-align:center;
+  max-width:80%;
+}
 </style>
 </head>
 <body>
 
 <canvas id="board" width="720" height="720"></canvas>
-<div id="diceOverlay"></div>
+
+<button id="startBtn">▶ START</button>
+<button id="restartBtn">🔄 RESTART</button>
+<button id="muteBtn">🔊</button>
+
+<div id="qr">
+  <div>Scan & Join</div>
+  <img id="qrImg">
+</div>
+
+<div id="overlay" class="overlay">
+  <div id="overlayBox" class="box"></div>
+</div>
 
 <script>
-const ws=new WebSocket(
- (location.protocol==="https:"?"wss://":"ws://")+location.host
+/* ================= WS ================= */
+const ws = new WebSocket(
+  (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
+/* ================= DOM ================= */
+const startBtn=document.getElementById("startBtn");
+const restartBtn=document.getElementById("restartBtn");
+const muteBtn=document.getElementById("muteBtn");
+const overlay=document.getElementById("overlay");
+const overlayBox=document.getElementById("overlayBox");
+
+/* ================= QR ================= */
+document.getElementById("qrImg").src =
+  "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
+  encodeURIComponent(location.origin + "/phone");
+
+/* ================= AUDIO ================= */
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+let MUTED=false;
+function play(f,d,v,t){
+  if(MUTED) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=t; o.frequency.value=f; g.gain.value=v;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+d);
+}
+const SND={
+  step:()=>play(240,0.07,0.25,"square"),
+  dice:()=>play(420,0.2,0.35,"square"),
+  square:()=>play(300,0.4,0.4,"triangle"),
+  circle:()=>play(700,0.3,0.35,"sine"),
+  star:()=>play(900,0.45,0.4,"sawtooth"),
+  win:()=>play(520,0.8,0.6,"sine")
+};
+
+/* ================= BOARD ================= */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
-const diceOverlay=document.getElementById("diceOverlay");
+const SIZE=10;
+const CELL=canvas.width/SIZE;
+const STEP_DELAY=420;
 
-const SIZE=10,CELL=canvas.width/SIZE;
 const board=[];
 let n=1;
 for(let r=0;r<SIZE;r++){
- const cols=[...Array(SIZE).keys()];
- if(r%2) cols.reverse();
- for(const c of cols){board.push({number:n,row:r,col:c});n++;}
+  const cols=[...Array(SIZE).keys()];
+  if(r%2) cols.reverse();
+  for(const c of cols){
+    board.push({number:n,row:r,col:c});
+    n++;
+  }
 }
 const getCell=num=>board.find(c=>c.number===num);
 const center=c=>({x:c.col*CELL+CELL/2,y:(SIZE-1-c.row)*CELL+CELL/2});
 
-let players={},currentTurn=null;
-
-ws.onmessage=e=>{
- const {type,data}=JSON.parse(e.data);
-
- if(type==="UPDATE"){
-  players=data.players;
-  currentTurn=data.turn;
-  render();
- }
-
- if(type==="DICE"){
-  diceOverlay.textContent="🎲 "+data.dice;
-  diceOverlay.classList.add("show");
-  setTimeout(()=>diceOverlay.classList.remove("show"),1500);
-  movePlayer(data.id,data.dice);
- }
+/* ================= MISSIONS ================= */
+const missions={
+  4:{shape:"square", text:"Πιες μια γουλιά 🍺"},
+  7:{shape:"circle", text:"Προχώρα +2"},
+  9:{shape:"star", text:"Πήγαινε πίσω -2"},
+  13:{shape:"square", text:"Δώσε 1 γύρο σε άλλον"},
+  17:{shape:"circle", text:"Ξαναρίξε 🎲"},
+  22:{shape:"star", text:"Χάνεις γύρο"},
+  28:{shape:"square", text:"Όλοι πίνουν 🍻"},
+  34:{shape:"circle", text:"Προχώρα +3"},
+  39:{shape:"star", text:"Πίσω -3"},
+  45:{shape:"square", text:"Διάλεξε παίκτη να πιει"},
+  52:{shape:"circle", text:"Δώρο! +2"},
+  58:{shape:"star", text:"Πίσω -4"},
+  64:{shape:"square", text:"Αλήθεια ή Θάρρος"},
+  71:{shape:"circle", text:"Μπροστά +3"},
+  77:{shape:"star", text:"Χάνεις 2 γύρους"},
+  83:{shape:"square", text:"Όλοι αλλάζουν ποτό"},
+  89:{shape:"circle", text:"Τρέξε +4"},
+  94:{shape:"star", text:"Πίσω -5"}
 };
 
+/* ================= STATE ================= */
+let players={}, currentTurn=null;
+
+/* ================= WS HANDLERS ================= */
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
+
+  if(type==="UPDATE"){
+    players=data.players;
+    currentTurn=data.turn;
+    render();
+  }
+
+  if(type==="DICE"){
+    SND.dice();
+    movePlayer(data.id,data.dice);
+  }
+
+  if(type==="WIN"){
+    SND.win();
+    overlayBox.textContent="🏆 ΝΙΚΗΤΗΣ "+data.emoji;
+    overlay.classList.add("show");
+  }
+};
+
+/* ================= DRAW ================= */
 function drawBoard(){
- board.forEach(c=>{
-  const x=c.col*CELL,y=(SIZE-1-c.row)*CELL;
-  ctx.fillStyle=c.number%2?"#00b4d8":"#1e90ff";
-  ctx.fillRect(x,y,CELL,CELL);
-  ctx.strokeRect(x,y,CELL,CELL);
-  ctx.fillStyle="#fff";
-  ctx.font="bold 18px Arial";
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.fillText(c.number,x+CELL/2,y+CELL/2);
- });
+  board.forEach(c=>{
+    const x=c.col*CELL;
+    const y=(SIZE-1-c.row)*CELL;
+    ctx.fillStyle=c.number%2?"#00b4d8":"#1e90ff";
+    ctx.fillRect(x,y,CELL,CELL);
+    ctx.strokeStyle="#03045e";
+    ctx.strokeRect(x,y,CELL,CELL);
+    ctx.fillStyle="#fff";
+    ctx.font=`bold ${CELL*0.35}px Arial`;
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(c.number,x+CELL/2,y+CELL/2);
+  });
+}
+
+function drawStar(x,y,r){
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    ctx.lineTo(
+      x + Math.cos((18+i*72)*Math.PI/180)*r,
+      y - Math.sin((18+i*72)*Math.PI/180)*r
+    );
+    ctx.lineTo(
+      x + Math.cos((54+i*72)*Math.PI/180)*r/2,
+      y - Math.sin((54+i*72)*Math.PI/180)*r/2
+    );
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawMissions(){
+  Object.entries(missions).forEach(([num,m])=>{
+    const c=center(getCell(+num));
+    const s=CELL*0.25;
+    ctx.save();
+    ctx.fillStyle =
+      m.shape==="square" ? "#9b59b6" :
+      m.shape==="circle" ? "#2ecc71" :
+      "#f1c40f";
+    if(m.shape==="square"){
+      ctx.fillRect(c.x-s,c.y-s,s*2,s*2);
+    }
+    if(m.shape==="circle"){
+      ctx.beginPath();
+      ctx.arc(c.x,c.y,s,0,Math.PI*2);
+      ctx.fill();
+    }
+    if(m.shape==="star"){
+      drawStar(c.x,c.y,s);
+    }
+    ctx.restore();
+  });
 }
 
 function drawPlayers(){
- let dockX=40;
- Object.values(players).forEach(p=>{
-  let pos;
-  if(!p.started){
-    pos={x:dockX,y:canvas.height+40};
-    dockX+=50;
-  }else{
-    pos=center(getCell(p.pos));
-  }
-  ctx.font="36px serif";
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.fillText(p.emoji,pos.x,pos.y);
- });
+  Object.entries(players).forEach(([id,p])=>{
+    const c=center(getCell(p.pos));
+    ctx.save();
+    ctx.globalAlpha=p.ghost?0.3:1;
+    if(id===currentTurn){
+      ctx.beginPath();
+      ctx.arc(c.x,c.y,26,0,Math.PI*2);
+      ctx.strokeStyle="rgba(255,255,255,0.8)";
+      ctx.lineWidth=4;
+      ctx.stroke();
+    }
+    ctx.font="36px serif";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(p.emoji,c.x,c.y);
+    ctx.restore();
+  });
 }
 
 function render(){
- ctx.clearRect(0,0,canvas.width,canvas.height);
- drawBoard();
- drawPlayers();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawBoard();
+  drawMissions();
+  drawPlayers();
 }
 
+/* ================= MOVE ================= */
 function movePlayer(id,steps){
- const p=players[id];
- function step(){
-  if(steps===0){
-    ws.send(JSON.stringify({type:"MOVE_DONE",data:{id,pos:p.pos}}));
-    return;
+  const p=players[id];
+  function step(){
+    if(steps===0){
+      checkMission(p.pos);
+      ws.send(JSON.stringify({type:"MOVE_DONE",data:{id,pos:p.pos}}));
+      return;
+    }
+    p.pos++;
+    SND.step();
+    render();
+    steps--;
+    setTimeout(step,STEP_DELAY);
   }
-  if(!p.started) p.started=true;
-  p.pos++;
-  render();
-  steps--;
-  setTimeout(step,350);
- }
- step();
+  step();
 }
+
+function checkMission(pos){
+  const m=missions[pos];
+  if(!m) return;
+  overlayBox.textContent=m.text;
+  overlay.classList.add("show");
+  SND[m.shape]();
+  setTimeout(()=>overlay.classList.remove("show"),2500);
+}
+
+/* ================= CONTROLS ================= */
+startBtn.onclick=()=>ws.send(JSON.stringify({type:"START"}));
+restartBtn.onclick=()=>{
+  ws.send(JSON.stringify({type:"RESTART"}));
+  overlay.classList.remove("show");
+};
+muteBtn.onclick=()=>{
+  MUTED=!MUTED;
+  muteBtn.textContent=MUTED?"🔇":"🔊";
+};
 
 render();
 </script>
