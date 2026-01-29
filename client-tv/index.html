@@ -12,122 +12,195 @@ body{
   justify-content:center;
   align-items:center;
   height:100vh;
+  overflow:hidden;
+  font-family:Arial, sans-serif;
+}
+
+#container{
+  position:relative;
 }
 
 canvas{
   background:#2F6364;
+}
+
+/* ===== UI OVERLAY ===== */
+#overlay{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+}
+
+#qr{
+  position:absolute;
+  bottom:20px;
+  left:20px;
+  background:white;
+  padding:10px;
+  border-radius:12px;
+}
+
+#controls{
+  position:absolute;
+  top:20px;
+  right:20px;
+  display:flex;
+  gap:12px;
+  pointer-events:auto;
+}
+
+button{
+  font-size:20px;
+  padding:12px 20px;
+  border:none;
+  border-radius:12px;
+  background:#FFD166;
+  font-weight:bold;
+  cursor:pointer;
 }
 </style>
 </head>
 
 <body>
 
-<canvas id="board" width="800" height="800"></canvas>
+<div id="container">
+  <canvas id="board" width="800" height="800"></canvas>
+
+  <div id="overlay">
+    <div id="controls">
+      <button id="startBtn">START</button>
+      <button id="resetBtn">RESTART</button>
+    </div>
+
+    <div id="qr">
+      <img id="qrImg" src="" width="120">
+    </div>
+  </div>
+</div>
 
 <script>
+/* ================= CANVAS ================= */
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
-
 const SIZE = 10;
 const CELL = canvas.width / SIZE;
 
-/* ===== δραστηριότητες ===== */
+/* ================= ACTIVITIES ================= */
 const ACTIVITIES = {
-  star: { color:"#FFD166", label:"⭐" },
-  circle: { color:"#06D6A0", label:"●" },
-  square: { color:"#EF476F", label:"■" }
+  star:{color:"#FFD166",label:"⭐"},
+  circle:{color:"#06D6A0",label:"●"},
+  square:{color:"#EF476F",label:"■"}
 };
 
-/* ===== τυχαία τετράγωνα δραστηριοτήτων ===== */
 const activityCells = {};
 while(Object.keys(activityCells).length < 20){
-  const n = Math.floor(Math.random()*98)+2; // 2–99
-  const keys = Object.keys(ACTIVITIES);
-  activityCells[n] = keys[Math.floor(Math.random()*keys.length)];
+  const n = Math.floor(Math.random()*98)+2;
+  const k = Object.keys(ACTIVITIES);
+  activityCells[n] = k[Math.floor(Math.random()*k.length)];
 }
 
-/* ===== STATE ===== */
+/* ================= STATE ================= */
 let players = {};
+let gameState = "WAITING";
 
-/* ===== WEBSOCKET ===== */
+/* ================= WEBSOCKET ================= */
 const ws = new WebSocket(
-  (location.protocol === "https:" ? "wss://" : "ws://") + location.host
+ (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
 ws.onmessage = e => {
-  const { type, data } = JSON.parse(e.data);
-  if(type === "INIT" || type === "UPDATE"){
-    players = data.players;
-    draw();
-  }
+ const {type,data} = JSON.parse(e.data);
+
+ if(type==="INIT"){
+   players=data.players;
+   gameState=data.gameState;
+   draw();
+ }
+
+ if(type==="UPDATE"){
+   players=data.players;
+   gameState=data.gameState;
+   draw();
+ }
 };
 
-/* ===== DRAW ===== */
+/* ================= DRAW ================= */
 function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+ ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  for(let i=0;i<100;i++){
-    const num = i+1;
-    const row = Math.floor(i/10);
-    const col = row % 2 === 0 ? i % 10 : 9 - (i % 10);
+ for(let i=0;i<100;i++){
+   const num=i+1;
+   const row=Math.floor(i/10);
+   const col=row%2===0?i%10:9-(i%10);
+   const x=col*CELL;
+   const y=(9-row)*CELL;
 
-    const x = col * CELL;
-    const y = (9 - row) * CELL;
+   ctx.fillStyle=activityCells[num]
+     ?ACTIVITIES[activityCells[num]].color
+     :"#2F6364";
+   ctx.fillRect(x,y,CELL,CELL);
 
-    // background
-    ctx.fillStyle = activityCells[num]
-      ? ACTIVITIES[activityCells[num]].color
-      : "#2F6364";
-    ctx.fillRect(x,y,CELL,CELL);
+   ctx.strokeStyle="#ffffff55";
+   ctx.strokeRect(x,y,CELL,CELL);
 
-    // border
-    ctx.strokeStyle = "#ffffff55";
-    ctx.strokeRect(x,y,CELL,CELL);
+   ctx.fillStyle="#000";
+   ctx.font="bold 16px Arial";
+   ctx.textAlign="left";
+   ctx.textBaseline="top";
+   ctx.fillText(num,x+6,y+4);
 
-    // number
-    ctx.fillStyle = "#000";
-    ctx.font = "bold 16px Arial";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(num, x+6, y+4);
+   if(activityCells[num]){
+     ctx.font="28px Arial";
+     ctx.textAlign="center";
+     ctx.textBaseline="middle";
+     ctx.fillText(
+       ACTIVITIES[activityCells[num]].label,
+       x+CELL/2,
+       y+CELL/2
+     );
+   }
+ }
 
-    // activity symbol
-    if(activityCells[num]){
-      ctx.font = "28px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(
-        ACTIVITIES[activityCells[num]].label,
-        x + CELL/2,
-        y + CELL/2
-      );
-    }
-  }
+ Object.values(players).forEach(p=>{
+   const pos=p.pos||1;
+   const i=pos-1;
+   const row=Math.floor(i/10);
+   const col=row%2===0?i%10:9-(i%10);
+   const cx=col*CELL+CELL/2;
+   const cy=(9-row)*CELL+CELL/2;
 
-  // pawns
-  Object.values(players).forEach(p=>{
-    const pos = p.pos || 1;
-    const i = pos - 1;
-    const row = Math.floor(i/10);
-    const col = row % 2 === 0 ? i % 10 : 9 - (i % 10);
+   ctx.beginPath();
+   ctx.fillStyle="#FFD166";
+   ctx.arc(cx,cy,CELL*0.28,0,Math.PI*2);
+   ctx.fill();
 
-    const cx = col*CELL + CELL/2;
-    const cy = (9-row)*CELL + CELL/2;
-
-    ctx.beginPath();
-    ctx.fillStyle = "#FFD166";
-    ctx.arc(cx,cy,CELL*0.28,0,Math.PI*2);
-    ctx.fill();
-
-    ctx.fillStyle="#000";
-    ctx.font="bold 18px Arial";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-
-    const label = p.pawn ? "A"+p.pawn.split("_")[1] : "?";
-    ctx.fillText(label,cx,cy);
-  });
+   ctx.fillStyle="#000";
+   ctx.font="bold 18px Arial";
+   ctx.textAlign="center";
+   ctx.textBaseline="middle";
+   const label=p.pawn?"A"+p.pawn.split("_")[1]:"?";
+   ctx.fillText(label,cx,cy);
+ });
 }
+
+/* ================= UI ================= */
+const startBtn=document.getElementById("startBtn");
+const resetBtn=document.getElementById("resetBtn");
+
+startBtn.onclick=()=>{
+ ws.send(JSON.stringify({type:"START"}));
+};
+
+resetBtn.onclick=()=>{
+ location.reload();
+};
+
+/* ================= QR ================= */
+const qrImg=document.getElementById("qrImg");
+const url=location.origin+"/phone";
+qrImg.src=
+ "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data="+
+ encodeURIComponent(url);
 
 draw();
 </script>
