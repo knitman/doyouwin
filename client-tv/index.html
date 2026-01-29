@@ -19,14 +19,12 @@ body{
   display:grid;
   grid-template-columns:auto auto;
   gap:24px;
-  align-items:start;
 }
 
 canvas{
   background:#2F6364;
 }
 
-/* SIDE UI */
 #sideUI{
   display:flex;
   flex-direction:column;
@@ -66,10 +64,10 @@ button{
 #messageBox{
   background:#FFD166;
   color:#000;
-  padding:40px 60px;
-  font-size:34px;
+  padding:36px 56px;
+  font-size:32px;
   font-weight:bold;
-  border-radius:40px;
+  border-radius:36px;
   box-shadow:0 20px 40px rgba(0,0,0,.4);
 }
 </style>
@@ -83,196 +81,168 @@ button{
   <div id="sideUI">
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
-
-    <div id="qr">
-      <img id="qrImg" width="160">
-    </div>
+    <div id="qr"><img id="qrImg" width="160"></div>
   </div>
 </div>
 
-<div id="message">
-  <div id="messageBox"></div>
-</div>
+<div id="message"><div id="messageBox"></div></div>
 
 <script>
 /* ================= CANVAS ================= */
-const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
-const SIZE = 10;
-const CELL = canvas.width / SIZE;
+const canvas=document.getElementById("board");
+const ctx=canvas.getContext("2d");
+const CELL=canvas.width/10;
+
+/* ================= AUDIO ================= */
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+
+function stepSound(){
+  const o=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  o.type="square"; o.frequency.value=220;
+  g.gain.value=0.05;
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+0.05);
+}
+
+function swapSound(){
+  const o=audioCtx.createOscillator();
+  o.type="sawtooth";
+  o.frequency.setValueAtTime(600,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(200,audioCtx.currentTime+0.3);
+  o.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+0.3);
+}
 
 /* ================= ACTIVITIES ================= */
-const ACTIVITIES = {
-  star: {
-    color:"#FFD166",
-    symbol:"⭐",
-    actions:[
-      { text:"Πήγαινε 2 μπροστά", move: 2 },
-      { text:"Πήγαινε 3 μπροστά", move: 3 }
-    ]
-  },
-  circle: {
-    color:"#06D6A0",
-    symbol:"●",
-    actions:[
-      { text:"Πήγαινε 2 πίσω", move: -2 },
-      { text:"Πήγαινε 3 πίσω", move: -3 }
-    ]
-  },
-  square: {
-    color:"#EF476F",
-    symbol:"■",
-    actions:[
-      { text:"Αντάλλαξε θέση με τον 3ο παίκτη", swap: 2 }
-    ]
-  }
+const ACTIVITIES={
+  star:{symbol:"⭐",color:"#FFD166",actions:[{t:"Πήγαινε 2 μπροστά",m:2},{t:"Πήγαινε 3 μπροστά",m:3}]},
+  circle:{symbol:"●",color:"#06D6A0",actions:[{t:"Πήγαινε 2 πίσω",m:-2},{t:"Πήγαινε 3 πίσω",m:-3}]},
+  square:{symbol:"■",color:"#EF476F",actions:[{t:"Αντάλλαξε θέση με τον 3ο παίκτη",s:2}]}
 };
 
-/* ===== RANDOM ACTIVITY CELLS ===== */
-const activityCells = {};
-while(Object.keys(activityCells).length < 25){
-  const n = Math.floor(Math.random()*98)+2;
-  const keys = Object.keys(ACTIVITIES);
-  activityCells[n] = keys[Math.floor(Math.random()*keys.length)];
+const activityCells={};
+while(Object.keys(activityCells).length<25){
+  const n=Math.floor(Math.random()*98)+2;
+  const k=Object.keys(ACTIVITIES);
+  activityCells[n]=k[Math.floor(Math.random()*k.length)];
 }
 
 /* ================= STATE ================= */
-let players = {};
-let lastPos = {};
+let players={},visualPlayers={},lastPos={};
 
-/* ================= WEBSOCKET ================= */
-const ws = new WebSocket(
- (location.protocol==="https:"?"wss://":"ws://")+location.host
-);
+/* ================= WS ================= */
+const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
 
-ws.onmessage = e => {
-  const { type, data } = JSON.parse(e.data);
-
-  if(type === "INIT" || type === "UPDATE"){
-    players = data.players;
-    applyActivities();
-    draw();
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
+  if(type==="INIT"||type==="UPDATE"){
+    players=data.players;
+    syncVisuals();
   }
 };
+
+/* ================= VISUAL SYNC ================= */
+function syncVisuals(){
+  Object.values(players).forEach(p=>{
+    if(!visualPlayers[p.pawn]) visualPlayers[p.pawn]={pos:p.pos,glow:0};
+    if(p.pos!==visualPlayers[p.pawn].pos){
+      animateMove(p.pawn,p.pos);
+    }
+  });
+}
+
+/* ================= ANIMATION ================= */
+function animateMove(pawn,target){
+  const v=visualPlayers[pawn];
+  const dir=Math.sign(target-v.pos);
+  const interval=setInterval(()=>{
+    if(v.pos===target){clearInterval(interval);applyActivity(pawn);return;}
+    v.pos+=dir;
+    v.glow=10;
+    stepSound();
+    draw();
+  },180);
+}
+
+/* ================= ACTIVITY ================= */
+function applyActivity(pawn){
+  const v=visualPlayers[pawn];
+  const type=activityCells[v.pos];
+  if(!type) return;
+
+  const act=ACTIVITIES[type];
+  const a=act.actions[Math.floor(Math.random()*act.actions.length)];
+
+  showMessage(a.t);
+
+  if(a.m){
+    animateMove(pawn,Math.max(1,Math.min(100,v.pos+a.m)));
+  }
+  if(a.s!==undefined){
+    const list=Object.values(visualPlayers);
+    if(list[a.s]){
+      swapSound();
+      const tmp=v.pos;
+      v.pos=list[a.s].pos;
+      list[a.s].pos=tmp;
+    }
+  }
+}
 
 /* ================= DRAW ================= */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   for(let i=0;i<100;i++){
-    const num=i+1;
-    const row=Math.floor(i/10);
-    const col=row%2===0?i%10:9-(i%10);
-    const x=col*CELL;
-    const y=(9-row)*CELL;
-
-    ctx.fillStyle = activityCells[num]
-      ? ACTIVITIES[activityCells[num]].color
-      : "#2F6364";
+    const n=i+1;
+    const r=Math.floor(i/10);
+    const c=r%2===0?i%10:9-(i%10);
+    const x=c*CELL,y=(9-r)*CELL;
+    ctx.fillStyle=activityCells[n]?ACTIVITIES[activityCells[n]].color:"#2F6364";
     ctx.fillRect(x,y,CELL,CELL);
-
-    ctx.strokeStyle="#ffffff55";
-    ctx.strokeRect(x,y,CELL,CELL);
-
-    ctx.fillStyle="#000";
-    ctx.font="bold 16px Arial";
-    ctx.textAlign="left";
-    ctx.textBaseline="top";
-    ctx.fillText(num,x+6,y+4);
-
-    if(activityCells[num]){
-      ctx.font="28px Arial";
-      ctx.textAlign="center";
-      ctx.textBaseline="middle";
-      ctx.fillText(
-        ACTIVITIES[activityCells[num]].symbol,
-        x+CELL/2,
-        y+CELL/2
-      );
+    ctx.strokeStyle="#ffffff55"; ctx.strokeRect(x,y,CELL,CELL);
+    ctx.fillStyle="#000"; ctx.font="bold 14px Arial";
+    ctx.fillText(n,x+4,y+14);
+    if(activityCells[n]){
+      ctx.font="26px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(ACTIVITIES[activityCells[n]].symbol,x+CELL/2,y+CELL/2);
     }
   }
 
-  Object.values(players).forEach(p=>{
-    const pos=p.pos||1;
-    const i=pos-1;
-    const row=Math.floor(i/10);
-    const col=row%2===0?i%10:9-(i%10);
-    const cx=col*CELL+CELL/2;
-    const cy=(9-row)*CELL+CELL/2;
+  Object.entries(visualPlayers).forEach(([k,p])=>{
+    const i=p.pos-1;
+    const r=Math.floor(i/10);
+    const c=r%2===0?i%10:9-(i%10);
+    const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
 
+    if(p.glow>0){
+      ctx.shadowBlur=20; ctx.shadowColor="#FFD166"; p.glow--;
+    }
     ctx.beginPath();
     ctx.fillStyle="#FFD166";
     ctx.arc(cx,cy,CELL*0.28,0,Math.PI*2);
     ctx.fill();
+    ctx.shadowBlur=0;
 
-    ctx.fillStyle="#000";
-    ctx.font="bold 18px Arial";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-    ctx.fillText("A"+p.pawn.split("_")[1],cx,cy);
-  });
-}
-
-/* ================= ACTIVITY LOGIC ================= */
-function applyActivities(){
-  const list = Object.values(players);
-
-  list.forEach((p, index)=>{
-    if(p.pos && lastPos[p.pawn] !== p.pos){
-      lastPos[p.pawn] = p.pos;
-
-      const type = activityCells[p.pos];
-      if(!type) return;
-
-      const act = ACTIVITIES[type];
-      const action = act.actions[
-        Math.floor(Math.random()*act.actions.length)
-      ];
-
-      // MOVE
-      if(action.move){
-        p.pos += action.move;
-        if(p.pos < 1) p.pos = 1;
-        if(p.pos > 100) p.pos = 100;
-        showMessage(action.text);
-      }
-
-      // SWAP
-      if(action.swap !== undefined){
-        const target = list[action.swap];
-        if(target){
-          const tmp = p.pos;
-          p.pos = target.pos;
-          target.pos = tmp;
-          showMessage(action.text);
-        }
-      }
-    }
+    ctx.fillStyle="#000"; ctx.font="bold 16px Arial";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("A"+k.split("_")[1],cx,cy);
   });
 }
 
 /* ================= MESSAGE ================= */
-const message=document.getElementById("message");
-const messageBox=document.getElementById("messageBox");
-
-function showMessage(text){
-  messageBox.textContent=text;
-  message.style.opacity=1;
-  setTimeout(()=>message.style.opacity=0,2500);
+const msg=document.getElementById("message"),box=document.getElementById("messageBox");
+function showMessage(t){
+  box.textContent=t;
+  msg.style.opacity=1;
+  setTimeout(()=>msg.style.opacity=0,2500);
 }
 
 /* ================= UI ================= */
-document.getElementById("startBtn").onclick=()=>{
-  ws.send(JSON.stringify({ type:"START" }));
-};
-
-document.getElementById("resetBtn").onclick=()=>{
-  ws.send(JSON.stringify({ type:"RESET" }));
-};
-
-document.getElementById("qrImg").src =
-  "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" +
-  encodeURIComponent(location.origin + "/phone");
+document.getElementById("startBtn").onclick=()=>ws.send(JSON.stringify({type:"START"}));
+document.getElementById("resetBtn").onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
+document.getElementById("qrImg").src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+encodeURIComponent(location.origin+"/phone");
 
 draw();
 </script>
