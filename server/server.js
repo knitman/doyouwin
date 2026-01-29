@@ -63,10 +63,14 @@ function broadcast(type, data){
   });
 }
 
-function currentPlayerId(){
-  return turnOrder[currentTurn];
+function resetGame(){
+  players = {};
+  turnOrder = [];
+  currentTurn = 0;
+  gameState = "WAITING";
 }
 
+/* ================= SOCKET ================= */
 wss.on("connection", ws => {
   ws.id = Math.random().toString(36).slice(2);
 
@@ -74,63 +78,62 @@ wss.on("connection", ws => {
     type: "INIT",
     data: {
       players,
-      turn: currentPlayerId(),
-      gameState
+      turn: turnOrder[currentTurn],
+      gameState,
+      id: ws.id
     }
   }));
 
   ws.on("message", msg => {
     const { type, data } = JSON.parse(msg);
 
-    /* ===== JOIN ===== */
     if (type === "JOIN" && gameState === "WAITING") {
-      players[ws.id] = {
-        pawn: data.pawn,
-        pos: 1
-      };
+      players[ws.id] = { pawn: data.pawn, pos: 1 };
       turnOrder.push(ws.id);
 
       broadcast("UPDATE", {
         players,
-        turn: currentPlayerId(),
+        turn: turnOrder[currentTurn],
         gameState
       });
     }
 
-    /* ===== START ===== */
     if (type === "START" && gameState === "WAITING") {
       gameState = "PLAYING";
       currentTurn = 0;
 
       broadcast("UPDATE", {
         players,
-        turn: currentPlayerId(),
+        turn: turnOrder[currentTurn],
         gameState
       });
     }
 
-    /* ===== ROLL & MOVE ===== */
     if (type === "ROLL" && gameState === "PLAYING") {
-
-      if (ws.id !== currentPlayerId()) return;
+      if (ws.id !== turnOrder[currentTurn]) return;
 
       const dice = Math.floor(Math.random() * 6) + 1;
-
-      // ενημέρωση ζαριού
       broadcast("DICE", { id: ws.id, dice });
 
-      // κίνηση
       let newPos = players[ws.id].pos + dice;
       if (newPos > 100) newPos = 100;
-
       players[ws.id].pos = newPos;
 
-      // επόμενος παίκτης
       currentTurn = (currentTurn + 1) % turnOrder.length;
 
       broadcast("UPDATE", {
         players,
-        turn: currentPlayerId(),
+        turn: turnOrder[currentTurn],
+        gameState
+      });
+    }
+
+    /* ===== RESET ===== */
+    if (type === "RESET") {
+      resetGame();
+      broadcast("UPDATE", {
+        players,
+        turn: null,
         gameState
       });
     }
