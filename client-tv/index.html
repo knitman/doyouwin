@@ -8,52 +8,52 @@
 body{
   margin:0;
   background:#1b1b1b;
+  height:100vh;
   display:flex;
   justify-content:center;
   align-items:center;
-  height:100vh;
-  overflow:hidden;
   font-family:Arial, sans-serif;
 }
 
-#container{
-  position:relative;
+/* ===== LAYOUT ===== */
+#layout{
+  display:grid;
+  grid-template-columns: 1fr auto;
+  gap:24px;
+  align-items:start;
+}
+
+/* ===== BOARD ===== */
+#boardWrapper{
+  display:flex;
+  justify-content:center;
+  align-items:center;
 }
 
 canvas{
   background:#2F6364;
 }
 
-/* ===== UI OVERLAY ===== */
-#overlay{
-  position:absolute;
-  inset:0;
-  pointer-events:none;
+/* ===== SIDE UI ===== */
+#sideUI{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  align-items:center;
 }
 
 #qr{
-  position:absolute;
-  bottom:20px;
-  left:20px;
   background:white;
-  padding:10px;
-  border-radius:12px;
-}
-
-#controls{
-  position:absolute;
-  top:20px;
-  right:20px;
-  display:flex;
-  gap:12px;
-  pointer-events:auto;
+  padding:12px;
+  border-radius:14px;
 }
 
 button{
+  width:160px;
+  padding:14px;
   font-size:20px;
-  padding:12px 20px;
   border:none;
-  border-radius:12px;
+  border-radius:14px;
   background:#FFD166;
   font-weight:bold;
   cursor:pointer;
@@ -63,19 +63,21 @@ button{
 
 <body>
 
-<div id="container">
-  <canvas id="board" width="800" height="800"></canvas>
+<div id="layout">
 
-  <div id="overlay">
-    <div id="controls">
-      <button id="startBtn">START</button>
-      <button id="resetBtn">RESTART</button>
-    </div>
+  <div id="boardWrapper">
+    <canvas id="board" width="800" height="800"></canvas>
+  </div>
+
+  <div id="sideUI">
+    <button id="startBtn">START</button>
+    <button id="resetBtn">RESTART</button>
 
     <div id="qr">
-      <img id="qrImg" src="" width="120">
+      <img id="qrImg" width="140">
     </div>
   </div>
+
 </div>
 
 <script>
@@ -110,14 +112,7 @@ const ws = new WebSocket(
 
 ws.onmessage = e => {
  const {type,data} = JSON.parse(e.data);
-
- if(type==="INIT"){
-   players=data.players;
-   gameState=data.gameState;
-   draw();
- }
-
- if(type==="UPDATE"){
+ if(type==="INIT" || type==="UPDATE"){
    players=data.players;
    gameState=data.gameState;
    draw();
@@ -184,23 +179,19 @@ function draw(){
 }
 
 /* ================= UI ================= */
-const startBtn=document.getElementById("startBtn");
-const resetBtn=document.getElementById("resetBtn");
-
-startBtn.onclick=()=>{
+document.getElementById("startBtn").onclick=()=>{
  ws.send(JSON.stringify({type:"START"}));
 };
 
-resetBtn.onclick=()=>{
+document.getElementById("resetBtn").onclick=()=>{
  location.reload();
 };
 
 /* ================= QR ================= */
 const qrImg=document.getElementById("qrImg");
-const url=location.origin+"/phone";
 qrImg.src=
- "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data="+
- encodeURIComponent(url);
+ "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+
+ encodeURIComponent(location.origin+"/phone");
 
 draw();
 </script>
