@@ -7,7 +7,7 @@
 <style>
 body{
   margin:0;
-  background:#2F6364; /* ✅ νέο background */
+  background:#2F6364;
   color:white;
   font-family:Arial, sans-serif;
   height:100vh;
@@ -25,32 +25,43 @@ h2{
   font-weight:bold;
 }
 
-/* EMOJI GRID */
+/* GRID */
 .grid{
   display:grid;
-  grid-template-columns:repeat(3,160px);
-  gap:28px;
+  grid-template-columns:repeat(3,180px);
+  gap:30px;
 }
 
-.emoji{
-  font-size:128px;
-  background:#222;
-  padding:20px;
+/* PAWN CARD */
+.pawn{
+  background:#1f4041;
   border-radius:32px;
-  line-height:1;
+  padding:18px;
   cursor:pointer;
   transition:transform .15s, background .15s;
 }
 
-.emoji:active{
-  transform:scale(0.92);
+.pawn:active{
+  transform:scale(0.95);
 }
 
-.emoji.selected{
+.pawn.selected{
   background:#ff006e;
 }
 
-/* DICE RESULT */
+.pawn.disabled{
+  opacity:0.3;
+  pointer-events:none;
+}
+
+/* IMAGE */
+.pawn img{
+  width:140px;
+  height:140px;
+  object-fit:contain;
+}
+
+/* DICE */
 #diceResult{
   margin-top:30px;
   font-size:48px;
@@ -86,79 +97,94 @@ button:disabled{
 <button id="action">ΕΤΟΙΜΟΣ</button>
 
 <script>
-/* ===== WebSocket ===== */
+/* ================= PAWNS (avatar_1 έως avatar_10) ================= */
+const PAWNS = [
+  { id:"avatar_1", img:"/client-phone/assets/pawns/avatar_1.png" },
+  { id:"avatar_2", img:"/client-phone/assets/pawns/avatar_2.png" },
+  { id:"avatar_3", img:"/client-phone/assets/pawns/avatar_3.png" },
+  { id:"avatar_4", img:"/client-phone/assets/pawns/avatar_4.png" },
+  { id:"avatar_5", img:"/client-phone/assets/pawns/avatar_5.png" },
+  { id:"avatar_6", img:"/client-phone/assets/pawns/avatar_6.png" },
+  { id:"avatar_7", img:"/client-phone/assets/pawns/avatar_7.png" },
+  { id:"avatar_8", img:"/client-phone/assets/pawns/avatar_8.png" },
+  { id:"avatar_9", img:"/client-phone/assets/pawns/avatar_9.png" },
+  { id:"avatar_10", img:"/client-phone/assets/pawns/avatar_10.png" }
+];
+
+/* ================= WEBSOCKET ================= */
 const ws = new WebSocket(
   (location.protocol === "https:" ? "wss://" : "ws://") + location.host
 );
 
-/* ===== DOM ===== */
+/* ================= DOM ================= */
 const grid = document.getElementById("grid");
 const btn = document.getElementById("action");
 const title = document.getElementById("title");
 const diceResult = document.getElementById("diceResult");
 
-/* ===== State ===== */
-let emojis = [];
+/* ================= STATE ================= */
 let players = {};
-let selected = null;
+let selectedPawn = null;
 let myTurn = false;
 let gameState = "WAITING";
 
-/* ===== WebSocket events ===== */
+/* ================= SOCKET EVENTS ================= */
 ws.onmessage = e => {
   const { type, data } = JSON.parse(e.data);
 
   if(type === "INIT"){
-    emojis = data.emojis;
     players = data.players;
-    gameState = data.gameState;
     render();
   }
 
   if(type === "UPDATE"){
     players = data.players;
     gameState = data.gameState;
-    myTurn = data.turn && players[data.turn]?.emoji === selected;
+    myTurn = data.turn && players[data.turn]?.pawn === selectedPawn;
     updateUI();
   }
 
   if(type === "DICE"){
-    if(players[data.id]?.emoji === selected){
+    if(players[data.id]?.pawn === selectedPawn){
       diceResult.textContent = "🎲 Έφερες: " + data.dice;
     }
   }
 
   if(type === "WIN"){
-    title.textContent = "🏆 Νικητής " + data.emoji;
+    title.textContent = "🏆 Νικητής";
     btn.disabled = true;
   }
 };
 
-/* ===== Render emojis ===== */
+/* ================= RENDER ================= */
 function render(){
   grid.innerHTML = "";
-  emojis.forEach(e=>{
-    const used = Object.values(players).some(p => p.emoji === e);
 
-    const d = document.createElement("div");
-    d.className = "emoji" + (selected === e ? " selected" : "");
-    d.textContent = e;
+  PAWNS.forEach(p=>{
+    const used = Object.values(players).some(pl => pl.pawn === p.id);
+
+    const card = document.createElement("div");
+    card.className =
+      "pawn" +
+      (selectedPawn === p.id ? " selected" : "") +
+      (used ? " disabled" : "");
+
+    const img = document.createElement("img");
+    img.src = p.img;
 
     if(!used){
-      d.onclick = ()=>{
-        selected = e;
+      card.onclick = ()=>{
+        selectedPawn = p.id;
         render();
       };
-    }else{
-      d.style.opacity = 0.3;
-      d.style.pointerEvents = "none";
     }
 
-    grid.appendChild(d);
+    card.appendChild(img);
+    grid.appendChild(card);
   });
 }
 
-/* ===== UI state ===== */
+/* ================= UI ================= */
 function updateUI(){
   if(gameState !== "PLAYING"){
     title.textContent = "Περίμενε να ξεκινήσει";
@@ -176,12 +202,12 @@ function updateUI(){
   }
 }
 
-/* ===== Button ===== */
+/* ================= BUTTON ================= */
 btn.onclick = ()=>{
-  if(gameState === "WAITING" && selected){
+  if(gameState === "WAITING" && selectedPawn){
     ws.send(JSON.stringify({
       type:"JOIN",
-      data:{ emoji:selected }
+      data:{ pawn:selectedPawn }
     }));
     btn.disabled = true;
   }
