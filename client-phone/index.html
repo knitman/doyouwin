@@ -5,91 +5,120 @@
 <title>Party Player</title>
 <style>
 body{
-  margin:0;background:#111;color:white;font-family:Arial;
-  height:100vh;display:flex;flex-direction:column;
-  justify-content:center;align-items:center;
+  margin:0;
+  background:#111;
+  color:white;
+  font-family:Arial;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
 }
-.grid{display:grid;grid-template-columns:repeat(5,64px);gap:16px;}
-.emoji{font-size:42px;background:#222;padding:12px;border-radius:16px;}
-.emoji.selected{background:#ff006e;}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(5,80px);
+  gap:18px;
+}
+.emoji{
+  font-size:56px;
+  background:#222;
+  padding:14px;
+  border-radius:18px;
+  text-align:center;
+}
+.emoji.selected{ background:#ff006e; }
 button{
-  margin-top:32px;padding:16px 36px;font-size:22px;
-  border:none;border-radius:16px;background:#ffbe0b;font-weight:bold;
+  margin-top:28px;
+  padding:16px 36px;
+  font-size:22px;
+  border:none;
+  border-radius:16px;
+  background:#ffbe0b;
+  font-weight:bold;
 }
-button:disabled{opacity:0.4;}
+#dice{
+  margin-top:20px;
+  font-size:40px;
+}
+button:disabled{ opacity:.4; }
 </style>
 </head>
 <body>
 
 <h2 id="title">Διάλεξε πιόνι</h2>
 <div class="grid" id="grid"></div>
+<div id="dice"></div>
 <button id="action">ΕΤΟΙΜΟΣ</button>
 
 <script>
-const ws = new WebSocket(
-  (location.protocol==="https:"?"wss://":"ws://")+location.host
+const ws=new WebSocket(
+ (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
 const grid=document.getElementById("grid");
 const btn=document.getElementById("action");
 const title=document.getElementById("title");
+const diceDiv=document.getElementById("dice");
 
 let emojis=[],players={},selected=null;
 let myTurn=false,gameState="WAITING";
 
 ws.onmessage=e=>{
-  const {type,data}=JSON.parse(e.data);
+ const {type,data}=JSON.parse(e.data);
 
-  if(type==="INIT"){
-    emojis=data.emojis; players=data.players; gameState=data.gameState;
-    render();
+ if(type==="INIT"){
+  emojis=data.emojis; players=data.players; gameState=data.gameState;
+  render();
+ }
+ if(type==="UPDATE"){
+  players=data.players; gameState=data.gameState;
+  myTurn=data.turn && players[data.turn]?.emoji===selected;
+  updateUI();
+ }
+ if(type==="DICE"){
+  if(players[data.id]?.emoji===selected){
+    diceDiv.textContent="🎲 "+data.dice;
   }
-  if(type==="UPDATE"){
-    players=data.players; gameState=data.gameState;
-    myTurn=data.turn && players[data.turn]?.emoji===selected;
-    render(); updateUI();
-  }
-  if(type==="WIN"){
-    title.textContent="🏆 Νικητής "+data.emoji;
-    btn.disabled=true;
-  }
+ }
 };
 
 function render(){
-  grid.innerHTML="";
-  emojis.forEach(e=>{
-    const used=Object.values(players).some(p=>p.emoji===e);
-    const d=document.createElement("div");
-    d.className="emoji"+(selected===e?" selected":"");
-    d.textContent=e;
-    if(!used) d.onclick=()=>{selected=e;render();}
-    else d.style.opacity=0.3;
-    grid.appendChild(d);
-  });
+ grid.innerHTML="";
+ emojis.forEach(e=>{
+  const used=Object.values(players).some(p=>p.emoji===e);
+  const d=document.createElement("div");
+  d.className="emoji"+(selected===e?" selected":"");
+  d.textContent=e;
+  if(!used) d.onclick=()=>{selected=e;render();}
+  else d.style.opacity=.3;
+  grid.appendChild(d);
+ });
 }
 
 function updateUI(){
-  if(gameState!=="PLAYING"){
-    title.textContent="Περίμενε να ξεκινήσει";
-    btn.disabled=true; return;
-  }
-  if(myTurn){
-    title.textContent="🎯 Η ΣΕΙΡΑ ΣΟΥ";
-    btn.textContent="ROLL 🎲";
-    btn.disabled=false;
-  }else{
-    title.textContent="⏳ ΠΕΡΙΜΕΝΕ";
-    btn.disabled=true;
-  }
+ if(gameState!=="PLAYING"){
+  title.textContent="Περίμενε να ξεκινήσει";
+  btn.disabled=true; return;
+ }
+ if(myTurn){
+  title.textContent="🎯 Η ΣΕΙΡΑ ΣΟΥ";
+  btn.textContent="ROLL 🎲";
+  btn.disabled=false;
+ }else{
+  title.textContent="⏳ ΠΕΡΙΜΕΝΕ";
+  btn.disabled=true;
+ }
 }
 
 btn.onclick=()=>{
-  if(gameState==="WAITING" && selected){
-    ws.send(JSON.stringify({type:"JOIN",data:{emoji:selected}}));
-    btn.disabled=true;
-  }else if(myTurn){
-    ws.send(JSON.stringify({type:"ROLL"}));
-  }
+ if(gameState==="WAITING" && selected){
+  ws.send(JSON.stringify({type:"JOIN",data:{emoji:selected}}));
+  btn.disabled=true;
+ }else if(myTurn){
+  diceDiv.textContent="";
+  ws.send(JSON.stringify({type:"ROLL"}));
+ }
 };
 </script>
 </body>
