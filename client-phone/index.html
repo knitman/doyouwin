@@ -19,20 +19,27 @@ body{
 
 h2{
   margin-bottom:20px;
+  font-size:28px;
 }
 
+/* 🔥 BIG EMOJI GRID */
 .grid{
   display:grid;
-  grid-template-columns:repeat(5,64px);
-  gap:16px;
+  grid-template-columns:repeat(4,90px);
+  gap:20px;
 }
 
 .emoji{
-  font-size:42px;
+  font-size:64px;              /* ⬅️ ΜΕΓΑΛΟ */
   background:#222;
-  padding:12px;
-  border-radius:16px;
+  padding:16px;
+  border-radius:22px;
   text-align:center;
+  transition:transform .15s;
+}
+
+.emoji:active{
+  transform:scale(0.92);
 }
 
 .emoji.selected{
@@ -40,11 +47,11 @@ h2{
 }
 
 button{
-  margin-top:28px;
-  padding:16px 36px;
-  font-size:22px;
+  margin-top:26px;
+  padding:18px 40px;
+  font-size:24px;
   border:none;
-  border-radius:16px;
+  border-radius:18px;
   background:#ffbe0b;
   font-weight:bold;
 }
@@ -55,9 +62,9 @@ button:disabled{
 
 #diceResult{
   margin-top:18px;
-  font-size:36px;
+  font-size:38px;
   font-weight:bold;
-  min-height:44px;
+  min-height:46px;
 }
 </style>
 </head>
