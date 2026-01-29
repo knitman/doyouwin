@@ -8,12 +8,13 @@
 body{
   margin:0;
   background:#1b1b1b;
-  overflow:hidden;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
 }
 
 canvas{
-  display:block;
-  margin:auto;
   background:#2F6364;
 }
 </style>
@@ -27,22 +28,34 @@ canvas{
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 
+const SIZE = 10;
+const CELL = canvas.width / SIZE;
+
+/* ===== δραστηριότητες ===== */
+const ACTIVITIES = {
+  star: { color:"#FFD166", label:"⭐" },
+  circle: { color:"#06D6A0", label:"●" },
+  square: { color:"#EF476F", label:"■" }
+};
+
+/* ===== τυχαία τετράγωνα δραστηριοτήτων ===== */
+const activityCells = {};
+while(Object.keys(activityCells).length < 20){
+  const n = Math.floor(Math.random()*98)+2; // 2–99
+  const keys = Object.keys(ACTIVITIES);
+  activityCells[n] = keys[Math.floor(Math.random()*keys.length)];
+}
+
+/* ===== STATE ===== */
+let players = {};
+
 /* ===== WEBSOCKET ===== */
 const ws = new WebSocket(
   (location.protocol === "https:" ? "wss://" : "ws://") + location.host
 );
 
-/* ===== STATE ===== */
-let players = {};
-
-/* ===== BOARD ===== */
-const size = 10;
-const cell = canvas.width / size;
-
-/* ===== SOCKET ===== */
 ws.onmessage = e => {
   const { type, data } = JSON.parse(e.data);
-
   if(type === "INIT" || type === "UPDATE"){
     players = data.players;
     draw();
@@ -53,48 +66,70 @@ ws.onmessage = e => {
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // grid
-  ctx.strokeStyle = "#ffffff33";
-  for(let i=0;i<=size;i++){
-    ctx.beginPath();
-    ctx.moveTo(i*cell,0);
-    ctx.lineTo(i*cell,canvas.height);
-    ctx.stroke();
+  for(let i=0;i<100;i++){
+    const num = i+1;
+    const row = Math.floor(i/10);
+    const col = row % 2 === 0 ? i % 10 : 9 - (i % 10);
 
-    ctx.beginPath();
-    ctx.moveTo(0,i*cell);
-    ctx.lineTo(canvas.width,i*cell);
-    ctx.stroke();
+    const x = col * CELL;
+    const y = (9 - row) * CELL;
+
+    // background
+    ctx.fillStyle = activityCells[num]
+      ? ACTIVITIES[activityCells[num]].color
+      : "#2F6364";
+    ctx.fillRect(x,y,CELL,CELL);
+
+    // border
+    ctx.strokeStyle = "#ffffff55";
+    ctx.strokeRect(x,y,CELL,CELL);
+
+    // number
+    ctx.fillStyle = "#000";
+    ctx.font = "bold 16px Arial";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(num, x+6, y+4);
+
+    // activity symbol
+    if(activityCells[num]){
+      ctx.font = "28px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(
+        ACTIVITIES[activityCells[num]].label,
+        x + CELL/2,
+        y + CELL/2
+      );
+    }
   }
 
-  // players
-  Object.values(players).forEach((p,i)=>{
+  // pawns
+  Object.values(players).forEach(p=>{
     const pos = p.pos || 1;
-    const x = (pos-1)%10;
-    const y = 9 - Math.floor((pos-1)/10);
+    const i = pos - 1;
+    const row = Math.floor(i/10);
+    const col = row % 2 === 0 ? i % 10 : 9 - (i % 10);
 
-    const cx = x*cell + cell/2;
-    const cy = y*cell + cell/2;
+    const cx = col*CELL + CELL/2;
+    const cy = (9-row)*CELL + CELL/2;
 
-    // pawn circle
     ctx.beginPath();
-    ctx.fillStyle = "#ffbe0b";
-    ctx.arc(cx, cy, cell*0.3, 0, Math.PI*2);
+    ctx.fillStyle = "#FFD166";
+    ctx.arc(cx,cy,CELL*0.28,0,Math.PI*2);
     ctx.fill();
 
-    // label (A1, A2...)
-    ctx.fillStyle = "#000";
-    ctx.font = "bold 20px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    ctx.fillStyle="#000";
+    ctx.font="bold 18px Arial";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
 
-    const label = p.pawn
-      ? "A" + p.pawn.split("_")[1]
-      : "?";
-
-    ctx.fillText(label, cx, cy);
+    const label = p.pawn ? "A"+p.pawn.split("_")[1] : "?";
+    ctx.fillText(label,cx,cy);
   });
 }
+
+draw();
 </script>
 
 </body>
