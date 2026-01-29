@@ -5,37 +5,39 @@
 <title>Party Player</title>
 
 <style>
+/* ===== RESET & BASE ===== */
 body{
   margin:0;
   background:#111;
   color:white;
-  font-family:Arial;
+  font-family:Arial, sans-serif;
   height:100vh;
   display:flex;
   flex-direction:column;
   justify-content:center;
   align-items:center;
-}
-
-h2{
-  margin-bottom:24px;
-  font-size:30px;
   text-align:center;
 }
 
-/* 🔥 HUGE EMOJI GRID */
+/* ===== TITLE ===== */
+h2{
+  margin-bottom:28px;
+  font-size:40px;           /* ⬅️ μεγάλωσε */
+  font-weight:bold;
+}
+
+/* ===== EMOJI GRID ===== */
 .grid{
   display:grid;
-  grid-template-columns:repeat(3,140px);
-  gap:24px;
+  grid-template-columns:repeat(3,160px);
+  gap:28px;
 }
 
 .emoji{
-  font-size:128px;          /* 🚀 128px όπως ζήτησες */
+  font-size:128px;
   background:#222;
-  padding:16px;
-  border-radius:28px;
-  text-align:center;
+  padding:20px;
+  border-radius:32px;
   line-height:1;
   transition:transform .15s, background .15s;
 }
@@ -48,25 +50,27 @@ h2{
   background:#ff006e;
 }
 
-button{
+/* ===== DICE RESULT ===== */
+#diceResult{
   margin-top:30px;
-  padding:20px 48px;
-  font-size:26px;
+  font-size:48px;          /* ⬅️ μεγάλωσε */
+  font-weight:bold;
+  min-height:60px;
+}
+
+/* ===== ACTION BUTTON ===== */
+button{
+  margin-top:36px;
+  padding:26px 56px;
+  font-size:32px;          /* ⬅️ μεγάλωσε */
   border:none;
-  border-radius:20px;
+  border-radius:26px;
   background:#ffbe0b;
   font-weight:bold;
 }
 
 button:disabled{
   opacity:0.4;
-}
-
-#diceResult{
-  margin-top:22px;
-  font-size:42px;
-  font-weight:bold;
-  min-height:50px;
 }
 </style>
 </head>
@@ -170,7 +174,7 @@ function updateUI(){
   }
 }
 
-/* ===== Button ===== */
+/* ===== Button action ===== */
 btn.onclick = ()=>{
   if(gameState === "WAITING" && selected){
     ws.send(JSON.stringify({
