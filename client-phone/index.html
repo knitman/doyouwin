@@ -9,15 +9,20 @@ body{
   margin:0;
   background:#2F6364;
   color:white;
-  font-family:Arial;
+  font-family:Arial, sans-serif;
   height:100vh;
   display:flex;
   flex-direction:column;
   justify-content:center;
   align-items:center;
+  text-align:center;
 }
 
-h2{ font-size:40px; margin-bottom:28px; }
+h2{
+  margin-bottom:28px;
+  font-size:40px;
+  font-weight:bold;
+}
 
 .grid{
   display:grid;
@@ -29,15 +34,34 @@ h2{ font-size:40px; margin-bottom:28px; }
   background:#1f4041;
   border-radius:32px;
   padding:18px;
+  cursor:pointer;
+  transition:transform .15s, background .15s;
 }
 
-.pawn.selected{ background:#ff006e; }
-.pawn.disabled{ opacity:0.3; pointer-events:none; }
+.pawn:active{
+  transform:scale(0.95);
+}
+
+.pawn.selected{
+  background:#ff006e;
+}
+
+.pawn.disabled{
+  opacity:0.3;
+  pointer-events:none;
+}
 
 .pawn img{
   width:140px;
   height:140px;
   object-fit:contain;
+}
+
+#diceResult{
+  margin-top:30px;
+  font-size:48px;
+  font-weight:bold;
+  min-height:60px;
 }
 
 button{
@@ -50,9 +74,8 @@ button{
   font-weight:bold;
 }
 
-#diceResult{
-  margin-top:24px;
-  font-size:48px;
+button:disabled{
+  opacity:0.4;
 }
 </style>
 </head>
@@ -60,60 +83,123 @@ button{
 <body>
 
 <h2 id="title">Διάλεξε πιόνι</h2>
+
 <div class="grid" id="grid"></div>
+
 <div id="diceResult"></div>
+
 <button id="action">ΕΤΟΙΜΟΣ</button>
 
 <script>
-const PAWNS = Array.from({length:10},(_,i)=>({
-  id:`avatar_${i+1}`,
-  img:`/assets/pawns/avatar_${i+1}.png`
+/* ===== PAWNS avatar_1 έως avatar_10 ===== */
+const PAWNS = Array.from({ length: 10 }, (_, i) => ({
+  id: `avatar_${i + 1}`,
+  img: `assets/pawns/avatar_${i + 1}.png` // ✅ ΣΩΣΤΟ PATH
 }));
 
+/* ===== WebSocket ===== */
 const ws = new WebSocket(
- (location.protocol==="https:"?"wss://":"ws://")+location.host
+  (location.protocol === "https:" ? "wss://" : "ws://") + location.host
 );
 
-const grid=document.getElementById("grid");
-const btn=document.getElementById("action");
-const title=document.getElementById("title");
-const dice=document.getElementById("diceResult");
+/* ===== DOM ===== */
+const grid = document.getElementById("grid");
+const btn = document.getElementById("action");
+const title = document.getElementById("title");
+const diceResult = document.getElementById("diceResult");
 
-let players={},selected=null,myTurn=false,gameState="WAITING";
+/* ===== State ===== */
+let players = {};
+let selectedPawn = null;
+let myTurn = false;
+let gameState = "WAITING";
 
-ws.onmessage=e=>{
- const {type,data}=JSON.parse(e.data);
- if(type==="INIT"){ players=data.players; render(); }
- if(type==="UPDATE"){
-   players=data.players;
-   gameState=data.gameState;
-   myTurn=data.turn && players[data.turn]?.pawn===selected;
- }
- if(type==="DICE"){
-   if(players[data.id]?.pawn===selected)
-     dice.textContent="🎲 "+data.dice;
- }
+/* ===== Socket events ===== */
+ws.onmessage = e => {
+  const { type, data } = JSON.parse(e.data);
+
+  if (type === "INIT") {
+    players = data.players;
+    render();
+  }
+
+  if (type === "UPDATE") {
+    players = data.players;
+    gameState = data.gameState;
+    myTurn = data.turn && players[data.turn]?.pawn === selectedPawn;
+    updateUI();
+  }
+
+  if (type === "DICE") {
+    if (players[data.id]?.pawn === selectedPawn) {
+      diceResult.textContent = "🎲 Έφερες: " + data.dice;
+    }
+  }
+
+  if (type === "WIN") {
+    title.textContent = "🏆 Νικητής";
+    btn.disabled = true;
+  }
 };
 
+/* ===== Render ===== */
 function render(){
- grid.innerHTML="";
- PAWNS.forEach(p=>{
-   const used=Object.values(players).some(pl=>pl.pawn===p.id);
-   const d=document.createElement("div");
-   d.className="pawn"+(selected===p.id?" selected":"")+(used?" disabled":"");
-   const img=document.createElement("img");
-   img.src=p.img;
-   d.onclick=()=>{ selected=p.id; render(); };
-   d.appendChild(img);
-   grid.appendChild(d);
- });
+  grid.innerHTML = "";
+
+  PAWNS.forEach(p => {
+    const used = Object.values(players).some(pl => pl.pawn === p.id);
+
+    const card = document.createElement("div");
+    card.className =
+      "pawn" +
+      (selectedPawn === p.id ? " selected" : "") +
+      (used ? " disabled" : "");
+
+    const img = document.createElement("img");
+    img.src = p.img;
+
+    if (!used) {
+      card.onclick = () => {
+        selectedPawn = p.id;
+        render();
+      };
+    }
+
+    card.appendChild(img);
+    grid.appendChild(card);
+  });
 }
 
-btn.onclick=()=>{
- if(gameState==="WAITING" && selected)
-   ws.send(JSON.stringify({type:"JOIN",data:{pawn:selected}}));
- else if(myTurn)
-   ws.send(JSON.stringify({type:"ROLL"}));
+/* ===== UI ===== */
+function updateUI(){
+  if (gameState !== "PLAYING") {
+    title.textContent = "Περίμενε να ξεκινήσει";
+    btn.disabled = true;
+    return;
+  }
+
+  if (myTurn) {
+    title.textContent = "🎯 Η ΣΕΙΡΑ ΣΟΥ";
+    btn.textContent = "ROLL 🎲";
+    btn.disabled = false;
+  } else {
+    title.textContent = "⏳ ΠΕΡΙΜΕΝΕ";
+    btn.disabled = true;
+  }
+}
+
+/* ===== Button ===== */
+btn.onclick = () => {
+  if (gameState === "WAITING" && selectedPawn) {
+    ws.send(JSON.stringify({
+      type: "JOIN",
+      data: { pawn: selectedPawn }
+    }));
+    btn.disabled = true;
+  } else if (myTurn) {
+    diceResult.textContent = "";
+    ws.send(JSON.stringify({ type: "ROLL" }));
+  }
 };
 </script>
 
