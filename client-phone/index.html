@@ -5,10 +5,9 @@
 <title>Party Player</title>
 
 <style>
-/* ===== RESET & BASE ===== */
 body{
   margin:0;
-  background:#2F6364;
+  background:#111;
   color:white;
   font-family:Arial, sans-serif;
   height:100vh;
@@ -19,50 +18,46 @@ body{
   text-align:center;
 }
 
-/* ===== TITLE ===== */
 h2{
   margin-bottom:28px;
-  font-size:40px;           /* ⬅️ μεγάλωσε */
+  font-size:40px;
   font-weight:bold;
 }
 
-/* ===== EMOJI GRID ===== */
+/* GRID */
 .grid{
   display:grid;
-  grid-template-columns:repeat(3,160px);
-  gap:28px;
+  grid-template-columns:repeat(2,180px);
+  gap:32px;
 }
 
-.emoji{
-  font-size:128px;
+/* PAWN CARD */
+.pawn{
   background:#222;
-  padding:20px;
   border-radius:32px;
-  line-height:1;
+  padding:20px;
   transition:transform .15s, background .15s;
 }
 
-.emoji:active{
-  transform:scale(0.92);
-}
-
-.emoji.selected{
+.pawn.selected{
   background:#ff006e;
 }
 
-/* ===== DICE RESULT ===== */
-#diceResult{
-  margin-top:30px;
-  font-size:48px;          /* ⬅️ μεγάλωσε */
-  font-weight:bold;
-  min-height:60px;
+.pawn:active{
+  transform:scale(0.95);
 }
 
-/* ===== ACTION BUTTON ===== */
+.pawn img{
+  width:140px;
+  height:140px;
+  object-fit:contain;
+}
+
+/* BUTTON */
 button{
   margin-top:36px;
   padding:26px 56px;
-  font-size:32px;          /* ⬅️ μεγάλωσε */
+  font-size:32px;
   border:none;
   border-radius:26px;
   background:#ffbe0b;
@@ -71,6 +66,14 @@ button{
 
 button:disabled{
   opacity:0.4;
+}
+
+/* DICE RESULT */
+#diceResult{
+  margin-top:24px;
+  font-size:48px;
+  font-weight:bold;
+  min-height:60px;
 }
 </style>
 </head>
@@ -86,6 +89,14 @@ button:disabled{
 <button id="action">ΕΤΟΙΜΟΣ</button>
 
 <script>
+/* ===== CONFIG (PERSONAL MODE) ===== */
+const PAWNS = [
+  {
+    id: "donald",
+    img: "/client-phone/assets/pawns/avatar_1.png"
+  }
+];
+
 /* ===== WebSocket ===== */
 const ws = new WebSocket(
   (location.protocol === "https:" ? "wss://" : "ws://") + location.host
@@ -98,9 +109,8 @@ const title = document.getElementById("title");
 const diceResult = document.getElementById("diceResult");
 
 /* ===== State ===== */
-let emojis = [];
 let players = {};
-let selected = null;
+let selectedPawn = null;
 let myTurn = false;
 let gameState = "WAITING";
 
@@ -109,54 +119,57 @@ ws.onmessage = e => {
   const { type, data } = JSON.parse(e.data);
 
   if(type === "INIT"){
-    emojis = data.emojis;
     players = data.players;
-    gameState = data.gameState;
     render();
   }
 
   if(type === "UPDATE"){
     players = data.players;
     gameState = data.gameState;
-    myTurn = data.turn && players[data.turn]?.emoji === selected;
+    myTurn = data.turn && players[data.turn]?.pawn === selectedPawn;
     updateUI();
   }
 
   if(type === "DICE"){
-    if(players[data.id]?.emoji === selected){
+    if(players[data.id]?.pawn === selectedPawn){
       diceResult.textContent = "🎲 Έφερες: " + data.dice;
     }
   }
 
   if(type === "WIN"){
-    title.textContent = "🏆 Νικητής " + data.emoji;
+    title.textContent = "🏆 Νικητής";
     btn.disabled = true;
   }
 };
 
-/* ===== Render emojis ===== */
+/* ===== Render pawns ===== */
 function render(){
   grid.innerHTML = "";
-  emojis.forEach(e=>{
-    const used = Object.values(players).some(p=>p.emoji === e);
-    const d = document.createElement("div");
-    d.className = "emoji" + (selected === e ? " selected" : "");
-    d.textContent = e;
+
+  PAWNS.forEach(p=>{
+    const used = Object.values(players).some(pl => pl.pawn === p.id);
+
+    const card = document.createElement("div");
+    card.className = "pawn" + (selectedPawn === p.id ? " selected" : "");
+
+    const img = document.createElement("img");
+    img.src = p.img;
 
     if(!used){
-      d.onclick = ()=>{
-        selected = e;
+      card.onclick = ()=>{
+        selectedPawn = p.id;
         render();
       };
     }else{
-      d.style.opacity = 0.3;
+      card.style.opacity = 0.3;
     }
 
-    grid.appendChild(d);
+    card.appendChild(img);
+    grid.appendChild(card);
   });
 }
 
-/* ===== UI state ===== */
+/* ===== UI ===== */
 function updateUI(){
   if(gameState !== "PLAYING"){
     title.textContent = "Περίμενε να ξεκινήσει";
@@ -174,12 +187,12 @@ function updateUI(){
   }
 }
 
-/* ===== Button action ===== */
+/* ===== Button ===== */
 btn.onclick = ()=>{
-  if(gameState === "WAITING" && selected){
+  if(gameState === "WAITING" && selectedPawn){
     ws.send(JSON.stringify({
       type:"JOIN",
-      data:{ emoji:selected }
+      data:{ pawn:selectedPawn }
     }));
     btn.disabled = true;
   }
@@ -192,4 +205,3 @@ btn.onclick = ()=>{
 
 </body>
 </html>
-
