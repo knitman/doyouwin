@@ -15,7 +15,6 @@ body{
   font-family:Arial, sans-serif;
 }
 
-/* ===== LAYOUT ===== */
 #layout{
   display:grid;
   grid-template-columns:auto auto;
@@ -23,12 +22,11 @@ body{
   align-items:start;
 }
 
-/* ===== BOARD ===== */
 canvas{
   background:#2F6364;
 }
 
-/* ===== SIDE UI ===== */
+/* SIDE UI */
 #sideUI{
   display:flex;
   flex-direction:column;
@@ -52,17 +50,36 @@ button{
   padding:12px;
   border-radius:14px;
 }
+
+/* CENTER MESSAGE */
+#message{
+  position:fixed;
+  inset:0;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .3s;
+}
+
+#messageBox{
+  background:#FFD166;
+  color:#000;
+  padding:40px 60px;
+  font-size:34px;
+  font-weight:bold;
+  border-radius:40px;
+  box-shadow:0 20px 40px rgba(0,0,0,.4);
+}
 </style>
 </head>
 
 <body>
 
 <div id="layout">
-
-  <!-- BOARD -->
   <canvas id="board" width="800" height="800"></canvas>
 
-  <!-- SIDE UI -->
   <div id="sideUI">
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
@@ -71,7 +88,10 @@ button{
       <img id="qrImg" width="160">
     </div>
   </div>
+</div>
 
+<div id="message">
+  <div id="messageBox"></div>
 </div>
 
 <script>
@@ -83,21 +103,42 @@ const CELL = canvas.width / SIZE;
 
 /* ================= ACTIVITIES ================= */
 const ACTIVITIES = {
-  star:{ color:"#FFD166", symbol:"⭐" },
-  circle:{ color:"#06D6A0", symbol:"●" },
-  square:{ color:"#EF476F", symbol:"■" }
+  star: {
+    color:"#FFD166",
+    symbol:"⭐",
+    actions:[
+      { text:"Πήγαινε 2 μπροστά", move: 2 },
+      { text:"Πήγαινε 3 μπροστά", move: 3 }
+    ]
+  },
+  circle: {
+    color:"#06D6A0",
+    symbol:"●",
+    actions:[
+      { text:"Πήγαινε 2 πίσω", move: -2 },
+      { text:"Πήγαινε 3 πίσω", move: -3 }
+    ]
+  },
+  square: {
+    color:"#EF476F",
+    symbol:"■",
+    actions:[
+      { text:"Αντάλλαξε θέση με τον 3ο παίκτη", swap: 2 }
+    ]
+  }
 };
 
+/* ===== RANDOM ACTIVITY CELLS ===== */
 const activityCells = {};
-while(Object.keys(activityCells).length < 20){
+while(Object.keys(activityCells).length < 25){
   const n = Math.floor(Math.random()*98)+2;
-  const k = Object.keys(ACTIVITIES);
-  activityCells[n] = k[Math.floor(Math.random()*k.length)];
+  const keys = Object.keys(ACTIVITIES);
+  activityCells[n] = keys[Math.floor(Math.random()*keys.length)];
 }
 
 /* ================= STATE ================= */
 let players = {};
-let gameState = "WAITING";
+let lastPos = {};
 
 /* ================= WEBSOCKET ================= */
 const ws = new WebSocket(
@@ -109,7 +150,7 @@ ws.onmessage = e => {
 
   if(type === "INIT" || type === "UPDATE"){
     players = data.players;
-    gameState = data.gameState;
+    applyActivities();
     draw();
   }
 };
@@ -118,7 +159,6 @@ ws.onmessage = e => {
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // board cells
   for(let i=0;i<100;i++){
     const num=i+1;
     const row=Math.floor(i/10);
@@ -152,7 +192,6 @@ function draw(){
     }
   }
 
-  // pawns
   Object.values(players).forEach(p=>{
     const pos=p.pos||1;
     const i=pos-1;
@@ -170,22 +209,67 @@ function draw(){
     ctx.font="bold 18px Arial";
     ctx.textAlign="center";
     ctx.textBaseline="middle";
-
-    const label = p.pawn ? "A"+p.pawn.split("_")[1] : "?";
-    ctx.fillText(label,cx,cy);
+    ctx.fillText("A"+p.pawn.split("_")[1],cx,cy);
   });
 }
 
+/* ================= ACTIVITY LOGIC ================= */
+function applyActivities(){
+  const list = Object.values(players);
+
+  list.forEach((p, index)=>{
+    if(p.pos && lastPos[p.pawn] !== p.pos){
+      lastPos[p.pawn] = p.pos;
+
+      const type = activityCells[p.pos];
+      if(!type) return;
+
+      const act = ACTIVITIES[type];
+      const action = act.actions[
+        Math.floor(Math.random()*act.actions.length)
+      ];
+
+      // MOVE
+      if(action.move){
+        p.pos += action.move;
+        if(p.pos < 1) p.pos = 1;
+        if(p.pos > 100) p.pos = 100;
+        showMessage(action.text);
+      }
+
+      // SWAP
+      if(action.swap !== undefined){
+        const target = list[action.swap];
+        if(target){
+          const tmp = p.pos;
+          p.pos = target.pos;
+          target.pos = tmp;
+          showMessage(action.text);
+        }
+      }
+    }
+  });
+}
+
+/* ================= MESSAGE ================= */
+const message=document.getElementById("message");
+const messageBox=document.getElementById("messageBox");
+
+function showMessage(text){
+  messageBox.textContent=text;
+  message.style.opacity=1;
+  setTimeout(()=>message.style.opacity=0,2500);
+}
+
 /* ================= UI ================= */
-document.getElementById("startBtn").onclick = () => {
+document.getElementById("startBtn").onclick=()=>{
   ws.send(JSON.stringify({ type:"START" }));
 };
 
-document.getElementById("resetBtn").onclick = () => {
+document.getElementById("resetBtn").onclick=()=>{
   ws.send(JSON.stringify({ type:"RESET" }));
 };
 
-/* ================= QR ================= */
 document.getElementById("qrImg").src =
   "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" +
   encodeURIComponent(location.origin + "/phone");
