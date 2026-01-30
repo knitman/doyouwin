@@ -18,8 +18,6 @@ body{
   gap:24px;
   padding:24px;
 }
-
-/* LEFT */
 #controls{
   display:flex;
   flex-direction:column;
@@ -38,19 +36,10 @@ button{
   font-weight:bold;
   cursor:pointer;
 }
-#qr img{
-  background:#fff;
-  padding:10px;
-  border-radius:14px;
-}
-
-/* CENTER */
 canvas{
   background:#2F6364;
   border-radius:16px;
 }
-
-/* RIGHT */
 #scores{
   display:flex;
   flex-direction:column;
@@ -63,7 +52,6 @@ canvas{
   background:#333;
   padding:10px 14px;
   border-radius:14px;
-  transition:.4s;
 }
 .score.leader{
   background:#FFD166;
@@ -79,8 +67,6 @@ canvas{
   font-size:22px;
   font-weight:bold;
 }
-
-/* OVERLAY */
 #overlay{
   position:fixed;
   inset:0;
@@ -103,30 +89,22 @@ canvas{
 
 <div id="root">
 
-  <!-- LEFT -->
   <div id="controls">
-    <label>
-      🎯 Στόχος Πόντων
-      <select id="targetSelect">
-        <option value="50">50</option>
-        <option value="100">100</option>
-        <option value="150">150</option>
-        <option value="200">200</option>
-      </select>
-    </label>
+    <select id="targetSelect">
+      <option value="50">50</option>
+      <option value="100">100</option>
+      <option value="150">150</option>
+      <option value="200">200</option>
+    </select>
 
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
 
-    <div id="qr">
-      <img id="qrImg" width="160">
-    </div>
+    <img id="qrImg" width="160">
   </div>
 
-  <!-- CENTER -->
   <canvas id="board" width="800" height="800"></canvas>
 
-  <!-- RIGHT -->
   <div>
     <h2 style="text-align:center">🏆 Πόντοι</h2>
     <div id="scores"></div>
@@ -136,28 +114,26 @@ canvas{
 
 <div id="overlay"></div>
 
-<!-- SOUNDS -->
 <audio id="stepSound" src="/assets/sounds/step.mp3"></audio>
 <audio id="jackpotSound" src="/assets/sounds/jackpot.mp3"></audio>
 <audio id="leaderSound" src="/assets/sounds/leader.mp3"></audio>
 <audio id="bgMusic" src="/assets/sounds/bg.mp3" loop></audio>
 
 <script>
-/* ===== CANVAS ===== */
-const canvas = document.getElementById("board");
+const STEP_DURATION = 1000; // ⏱️ 1 δευτερόλεπτο ανά τετράγωνο
+
+const canvas = board;
 const ctx = canvas.getContext("2d");
 const CELL = canvas.width / 10;
 const COLOR_A = "#3A7F80";
 const COLOR_B = "#2F6364";
 
-/* ===== AUDIO ===== */
 const stepSound = document.getElementById("stepSound");
 const jackpotSound = document.getElementById("jackpotSound");
 const leaderSound = document.getElementById("leaderSound");
 const bgMusic = document.getElementById("bgMusic");
 bgMusic.volume = 0.25;
 
-/* ===== STATE ===== */
 let players = {};
 let scores = {};
 let visuals = {};
@@ -165,14 +141,14 @@ let images = {};
 let winPoints = 50;
 let lastLeader = null;
 
-/* LOAD AVATARS */
+/* AVATARS */
 for(let i=1;i<=10;i++){
   const img = new Image();
   img.src = `/assets/pawns/avatar_${i}.png`;
   images[`avatar_${i}`] = img;
 }
 
-/* DRAW BOARD */
+/* DRAW */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -181,12 +157,10 @@ function draw(){
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
     const x=c*CELL,y=(9-r)*CELL;
-
     ctx.fillStyle=n%2?COLOR_A:COLOR_B;
     ctx.fillRect(x,y,CELL,CELL);
     ctx.strokeStyle="#ffffff44";
     ctx.strokeRect(x,y,CELL,CELL);
-
     ctx.fillStyle="rgba(0,0,0,.35)";
     ctx.font="bold 18px Arial";
     ctx.textAlign="center";
@@ -209,21 +183,22 @@ function draw(){
   });
 }
 
-/* STEP ANIMATION */
+/* STEP MOVE – 1s */
 function animateMove(id,newPos){
-  const p=visuals[id];
-  let cur=p.pos;
-  const step=newPos>cur?1:-1;
-  const delay=350;
+  const p = visuals[id];
+  let cur = p.pos;
+  const step = newPos > cur ? 1 : -1;
 
-  const timer=setInterval(()=>{
-    cur+=step;
-    p.pos=cur;
-    stepSound.currentTime=0;
+  const timer = setInterval(()=>{
+    cur += step;
+    p.pos = cur;
+
+    stepSound.currentTime = 0;
     stepSound.play();
+
     draw();
-    if(cur===newPos) clearInterval(timer);
-  },delay);
+    if(cur === newPos) clearInterval(timer);
+  }, STEP_DURATION);
 }
 
 /* SCOREBOARD */
@@ -248,7 +223,7 @@ function updateScores(){
     row.className="score"+(i===0?" leader":"");
     row.innerHTML=`
       <img src="${images[p.pawn].src}">
-      <div class="points">${i===0?"👑 ":""}${item.score} / ${winPoints}</div>
+      <div class="points">${i===0?"👑 ":""}${item.score}/${winPoints}</div>
     `;
     box.appendChild(row);
   });
@@ -262,7 +237,7 @@ function showOverlay(text,ms){
   setTimeout(()=>overlay.classList.remove("show"),ms);
 }
 
-/* ===== WS ===== */
+/* WS */
 const ws=new WebSocket(
   (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
@@ -276,7 +251,7 @@ ws.onmessage=e=>{
     winPoints=data.winPoints||winPoints;
 
     Object.keys(players).forEach(id=>{
-      visuals[id] ??= { pawn:players[id].pawn, pos:players[id].pos };
+      visuals[id] ??= { pawn:players[id].pawn, pos:0 };
       if(players[id].pos !== visuals[id].pos){
         animateMove(id,players[id].pos);
       }
@@ -286,21 +261,24 @@ ws.onmessage=e=>{
     draw();
   }
 
+  if(type==="ROUND_COUNTDOWN"){
+    if(data.seconds===10){
+      Object.values(visuals).forEach(v=>v.pos=0);
+      draw();
+    }
+    showOverlay(`🔄 Επόμενος γύρος σε ${data.seconds}`,1000);
+  }
+
   if(type==="BONUS"){
-    const jackpot=data.bonus>=8;
-    if(jackpot) jackpotSound.play();
+    if(data.bonus>=8) jackpotSound.play();
     showOverlay(
-      jackpot ? `🎉 JACKPOT +${data.bonus}` :
-      data.bonus>0 ? `➕ +${data.bonus} πόντοι` :
-                     `❌ ${data.bonus} πόντοι`,
-      jackpot ? 7000 : 5000
+      data.bonus>=8?`🎉 JACKPOT +${data.bonus}`:
+      data.bonus>0?`➕ +${data.bonus} πόντοι`:
+                   `❌ ${data.bonus} πόντοι`,
+      data.bonus>=8?7000:5000
     );
     scores=data.scores;
     updateScores();
-  }
-
-  if(type==="ROUND_COUNTDOWN" && data.seconds>0){
-    showOverlay(`🔄 Επόμενος γύρος σε ${data.seconds}`,1000);
   }
 
   if(type==="TOURNAMENT_WINNER"){
@@ -309,20 +287,17 @@ ws.onmessage=e=>{
 };
 
 /* CONTROLS */
-document.getElementById("startBtn").onclick = () => {
-  bgMusic.currentTime = 0;
+startBtn.onclick=()=>{
+  bgMusic.currentTime=0;
   bgMusic.play().catch(()=>{});
   ws.send(JSON.stringify({type:"START"}));
 };
-document.getElementById("resetBtn").onclick =
-  ()=>ws.send(JSON.stringify({type:"RESET"}));
-document.getElementById("targetSelect").onchange = e =>
-  ws.send(JSON.stringify({
-    type:"SET_TARGET",
-    data:{points:+e.target.value}
-  }));
+resetBtn.onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
+targetSelect.onchange=e=>ws.send(JSON.stringify({
+  type:"SET_TARGET", data:{points:+e.target.value}
+}));
 
-document.getElementById("qrImg").src =
+qrImg.src =
   "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" +
   encodeURIComponent(location.origin + "/phone");
 
