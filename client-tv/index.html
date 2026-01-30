@@ -91,12 +91,12 @@ button{
 
 <script>
 /* ================= CANVAS ================= */
-const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
-const CELL = canvas.width / 10;
+const canvas=document.getElementById("board");
+const ctx=canvas.getContext("2d");
+const CELL=canvas.width/10;
 
 /* ================= AUDIO ================= */
-const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
 function stepSound(){
   const o=audioCtx.createOscillator(), g=audioCtx.createGain();
   o.type="square"; o.frequency.value=220; g.gain.value=0.05;
@@ -111,6 +111,7 @@ const ACTIVITIES={
   square:{symbol:"■",color:"#EF476F",actions:[{t:"Αντάλλαξε θέση με τον 3ο παίκτη",s:2}]}
 };
 
+/* ===== RANDOM ACTIVITY CELLS ===== */
 const activityCells={};
 while(Object.keys(activityCells).length<25){
   const n=Math.floor(Math.random()*98)+2;
@@ -121,7 +122,7 @@ while(Object.keys(activityCells).length<25){
 /* ================= STATE ================= */
 let players={},visualPlayers={},images={};
 
-/* ================= LOAD AVATAR IMAGES ================= */
+/* ================= LOAD AVATARS ================= */
 for(let i=1;i<=10;i++){
   const img=new Image();
   img.src=`/assets/pawns/avatar_${i}.png`;
@@ -170,18 +171,22 @@ function applyActivity(pawn){
   if(!type) return;
 
   const act=ACTIVITIES[type];
-  const a=act.actions[Math.floor(Math.random()*act.actions.length)];
-  showMessage(a.t);
+  const times = v.pos >= 91 ? 2 : 1; // 🔥 SPRINT MODE
 
-  if(a.m){
-    animateMove(pawn,Math.max(1,Math.min(100,v.pos+a.m)));
-  }
-  if(a.s!==undefined){
-    const list=Object.values(visualPlayers);
-    if(list[a.s]){
-      const tmp=v.pos;
-      v.pos=list[a.s].pos;
-      list[a.s].pos=tmp;
+  for(let i=0;i<times;i++){
+    const a=act.actions[Math.floor(Math.random()*act.actions.length)];
+    showMessage((times>1?"🔥 SPRINT! ":"")+a.t);
+
+    if(a.m){
+      v.pos=Math.max(1,Math.min(100,v.pos+a.m));
+    }
+    if(a.s!==undefined){
+      const list=Object.values(visualPlayers);
+      if(list[a.s]){
+        const tmp=v.pos;
+        v.pos=list[a.s].pos;
+        list[a.s].pos=tmp;
+      }
     }
   }
 }
@@ -198,13 +203,26 @@ function draw(){
 
     ctx.fillStyle=activityCells[n]?ACTIVITIES[activityCells[n]].color:"#2F6364";
     ctx.fillRect(x,y,CELL,CELL);
-    ctx.strokeStyle="#ffffff55"; ctx.strokeRect(x,y,CELL,CELL);
-    ctx.fillStyle="#000"; ctx.font="bold 14px Arial";
-    ctx.fillText(n,x+4,y+14);
+    ctx.strokeStyle="#ffffff55";
+    ctx.strokeRect(x,y,CELL,CELL);
+
+    /* number center */
+    ctx.fillStyle="rgba(0,0,0,0.35)";
+    ctx.font="bold 20px Arial";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(n,x+CELL/2,y+CELL/2);
 
     if(activityCells[n]){
-      ctx.font="26px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.font="28px Arial";
       ctx.fillText(ACTIVITIES[activityCells[n]].symbol,x+CELL/2,y+CELL/2);
+    }
+
+    if(n>=91){
+      ctx.strokeStyle="#FFD166";
+      ctx.lineWidth=3;
+      ctx.strokeRect(x+2,y+2,CELL-4,CELL-4);
+      ctx.lineWidth=1;
     }
   }
 
