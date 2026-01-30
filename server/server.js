@@ -5,50 +5,28 @@ const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 8080;
 
-/* ================= MIME TYPES ================= */
-const mimeTypes = {
-  ".html": "text/html",
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".svg": "image/svg+xml"
-};
-
-/* ================= HTTP SERVER ================= */
-const server = http.createServer((req, res) => {
-
-  if (req.url === "/tv") {
+/* ================= HTTP ================= */
+const server = http.createServer((req,res)=>{
+  if(req.url==="/tv"){
     return fs.createReadStream(
-      path.join(__dirname, "../client-tv/index.html")
+      path.join(__dirname,"../client-tv/index.html")
     ).pipe(res);
   }
-
-  if (req.url === "/phone") {
+  if(req.url==="/phone"){
     return fs.createReadStream(
-      path.join(__dirname, "../client-phone/index.html")
+      path.join(__dirname,"../client-phone/index.html")
     ).pipe(res);
   }
-
-  if (req.url.startsWith("/assets/")) {
-    const filePath = path.join(__dirname, "../client-phone", req.url);
-    const ext = path.extname(filePath);
-    const mime = mimeTypes[ext] || "application/octet-stream";
-
-    if (!fs.existsSync(filePath)) {
-      res.writeHead(404);
-      return res.end("Not found");
+  if(req.url.startsWith("/assets/")){
+    const filePath = path.join(__dirname,"../client-phone",req.url);
+    if(fs.existsSync(filePath)){
+      return fs.createReadStream(filePath).pipe(res);
     }
-
-    res.writeHead(200, { "Content-Type": mime });
-    return fs.createReadStream(filePath).pipe(res);
   }
-
   res.end("Party Board Server Running");
 });
 
-/* ================= WEBSOCKET ================= */
+/* ================= WS ================= */
 const wss = new WebSocket.Server({ server });
 
 let players = {};
@@ -56,91 +34,80 @@ let turnOrder = [];
 let currentTurn = 0;
 let gameState = "WAITING";
 
-function broadcast(type, data){
-  const msg = JSON.stringify({ type, data });
-  wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg);
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+}
+
+function broadcast(type,data){
+  const msg=JSON.stringify({type,data});
+  wss.clients.forEach(c=>{
+    if(c.readyState===WebSocket.OPEN) c.send(msg);
   });
 }
 
-function resetGame(){
-  players = {};
-  turnOrder = [];
-  currentTurn = 0;
-  gameState = "WAITING";
-}
-
-/* ================= SOCKET ================= */
-wss.on("connection", ws => {
-  ws.id = Math.random().toString(36).slice(2);
+wss.on("connection",ws=>{
+  ws.id=Math.random().toString(36).slice(2);
 
   ws.send(JSON.stringify({
-    type: "INIT",
-    data: {
-      players,
-      turn: turnOrder[currentTurn],
-      gameState,
-      id: ws.id
-    }
+    type:"INIT",
+    data:{ players, gameState, turn:null, id:ws.id }
   }));
 
-  ws.on("message", msg => {
-    const { type, data } = JSON.parse(msg);
+  ws.on("message",msg=>{
+    const {type,data}=JSON.parse(msg);
 
-    if (type === "JOIN" && gameState === "WAITING") {
-      players[ws.id] = { pawn: data.pawn, pos: 1 };
-      turnOrder.push(ws.id);
-
-      broadcast("UPDATE", {
-        players,
-        turn: turnOrder[currentTurn],
-        gameState
-      });
+    if(type==="JOIN" && gameState==="WAITING"){
+      players[ws.id]={ pawn:data.pawn, pos:0 }; // ⬅️ ΕΚΤΟΣ ΤΑΜΠΛΟ
+      broadcast("UPDATE",{ players, gameState, turn:null });
     }
 
-    if (type === "START" && gameState === "WAITING") {
-      gameState = "PLAYING";
+    if(type==="START" && gameState==="WAITING"){
+      turnOrder = Object.keys(players);
+      shuffle(turnOrder);          // 🎲 ΤΥΧΑΙΑ ΣΕΙΡΑ
       currentTurn = 0;
+      gameState = "PLAYING";
 
-      broadcast("UPDATE", {
+      broadcast("ORDER", { order: turnOrder });
+      broadcast("UPDATE",{
         players,
-        turn: turnOrder[currentTurn],
-        gameState
+        gameState,
+        turn: turnOrder[currentTurn]
       });
     }
 
-    if (type === "ROLL" && gameState === "PLAYING") {
-      if (ws.id !== turnOrder[currentTurn]) return;
+    if(type==="ROLL" && gameState==="PLAYING"){
+      if(ws.id !== turnOrder[currentTurn]) return;
 
-      const dice = Math.floor(Math.random() * 6) + 1;
-      broadcast("DICE", { id: ws.id, dice });
+      const dice = Math.floor(Math.random()*6)+1;
 
-      let newPos = players[ws.id].pos + dice;
-      if (newPos > 100) newPos = 100;
-      players[ws.id].pos = newPos;
+      let p = players[ws.id];
+      if(p.pos===0) p.pos=1; // ⬅️ ΜΠΑΙΝΕΙ ΣΤΟ ΤΑΜΠΛΟ
+      else p.pos = Math.min(100, p.pos + dice);
 
-      currentTurn = (currentTurn + 1) % turnOrder.length;
+      broadcast("DICE",{ id:ws.id, dice });
 
-      broadcast("UPDATE", {
+      currentTurn = (currentTurn+1)%turnOrder.length;
+
+      broadcast("UPDATE",{
         players,
-        turn: turnOrder[currentTurn],
-        gameState
+        gameState,
+        turn: turnOrder[currentTurn]
       });
     }
 
-    /* ===== RESET ===== */
-    if (type === "RESET") {
-      resetGame();
-      broadcast("UPDATE", {
-        players,
-        turn: null,
-        gameState
-      });
+    if(type==="RESET"){
+      players={};
+      turnOrder=[];
+      currentTurn=0;
+      gameState="WAITING";
+      broadcast("UPDATE",{ players, gameState, turn:null });
     }
   });
 });
 
-/* ================= START ================= */
-server.listen(PORT, () => {
-  console.log("🟢 Party Board Server running on port", PORT);
+server.listen(PORT,()=>{
+  console.log("🟢 Party Board Server running");
 });
