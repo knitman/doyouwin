@@ -21,9 +21,7 @@ body{
   gap:24px;
 }
 
-canvas{
-  background:#2F6364;
-}
+canvas{ background:#2F6364; }
 
 #sideUI{
   display:flex;
@@ -50,7 +48,7 @@ button{
 }
 
 /* MESSAGE */
-#message{
+#message, #winner{
   position:fixed;
   inset:0;
   display:flex;
@@ -58,7 +56,7 @@ button{
   align-items:center;
   pointer-events:none;
   opacity:0;
-  transition:opacity .3s;
+  transition:opacity .4s;
 }
 
 #messageBox{
@@ -68,7 +66,42 @@ button{
   font-size:32px;
   font-weight:bold;
   border-radius:36px;
-  box-shadow:0 20px 40px rgba(0,0,0,.4);
+}
+
+#winnerBox{
+  background:#FFD166;
+  padding:50px 70px;
+  border-radius:40px;
+  text-align:center;
+  box-shadow:0 30px 60px rgba(0,0,0,.5);
+}
+
+#winnerBox h1{
+  margin:0 0 20px;
+  font-size:48px;
+}
+
+#winnerBox img{
+  width:180px;
+  height:180px;
+  border-radius:50%;
+  object-fit:cover;
+  border:6px solid #000;
+}
+
+/* CONFETTI */
+.confetti{
+  position:fixed;
+  width:10px;
+  height:10px;
+  top:-10px;
+  animation:fall 3s linear forwards;
+}
+@keyframes fall{
+  to{
+    transform:translateY(110vh) rotate(720deg);
+    opacity:0;
+  }
 }
 </style>
 </head>
@@ -87,6 +120,13 @@ button{
 
 <div id="message"><div id="messageBox"></div></div>
 
+<div id="winner">
+  <div id="winnerBox">
+    <h1>🏆 ΝΙΚΗΤΗΣ!</h1>
+    <img id="winnerImg">
+  </div>
+</div>
+
 <script>
 /* ================= CANVAS ================= */
 const canvas=document.getElementById("board");
@@ -95,6 +135,7 @@ const CELL=canvas.width/10;
 
 /* ================= AUDIO ================= */
 const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+
 function stepSound(){
   const o=audioCtx.createOscillator(), g=audioCtx.createGain();
   o.type="square"; o.frequency.value=220; g.gain.value=0.05;
@@ -102,7 +143,17 @@ function stepSound(){
   o.start(); o.stop(audioCtx.currentTime+0.05);
 }
 
-/* ================= ACTIVITIES DEF ================= */
+function winSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type="triangle";
+  o.frequency.setValueAtTime(440,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(880,audioCtx.currentTime+0.6);
+  g.gain.value=0.1;
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+0.6);
+}
+
+/* ================= ACTIVITIES ================= */
 const ACTIVITIES={
   star:{symbol:"⭐",color:"#FFD166",actions:[{t:"Πήγαινε 2 μπροστά",m:2},{t:"Πήγαινε 3 μπροστά",m:3}]},
   circle:{symbol:"●",color:"#06D6A0",actions:[{t:"Πήγαινε 2 πίσω",m:-2},{t:"Πήγαινε 3 πίσω",m:-3}]},
@@ -110,11 +161,8 @@ const ACTIVITIES={
 };
 
 /* ================= STATE ================= */
-let players = {};
-let visualPlayers = {};
-let images = {};
-let activityCells = {};
-let activeIntervals = [];
+let players={},visualPlayers={},images={},activityCells={},activeIntervals=[];
+let gameEnded=false;
 
 /* ================= LOAD AVATARS ================= */
 for(let i=1;i<=10;i++){
@@ -123,10 +171,10 @@ for(let i=1;i<=10;i++){
   images[`avatar_${i}`]=img;
 }
 
-/* ================= INIT ACTIVITIES ================= */
+/* ================= ACTIVITIES GEN ================= */
 function generateActivities(){
-  activityCells = {};
-  while(Object.keys(activityCells).length < 25){
+  activityCells={};
+  while(Object.keys(activityCells).length<25){
     const n=Math.floor(Math.random()*98)+2;
     const k=Object.keys(ACTIVITIES);
     activityCells[n]=k[Math.floor(Math.random()*k.length)];
@@ -135,11 +183,9 @@ function generateActivities(){
 
 /* ================= WS ================= */
 const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
-
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
-
-  if(type==="INIT" || type==="UPDATE"){
+  if(type==="INIT"||type==="UPDATE"){
     players=data.players;
     syncVisuals();
   }
@@ -147,7 +193,13 @@ ws.onmessage=e=>{
 
 /* ================= SYNC ================= */
 function syncVisuals(){
+  if(gameEnded) return;
+
   Object.values(players).forEach(p=>{
+    if(p.pos>=100 && !gameEnded){
+      showWinner(p.pawn);
+      return;
+    }
     if(!visualPlayers[p.pawn]){
       visualPlayers[p.pawn]={pos:p.pos};
     }
@@ -160,10 +212,10 @@ function syncVisuals(){
 
 /* ================= ANIMATE ================= */
 function animateMove(pawn,target){
-  const v=visualPlayers[pawn];
   clearIntervals();
-
+  const v=visualPlayers[pawn];
   const dir=Math.sign(target-v.pos);
+
   const int=setInterval(()=>{
     if(v.pos===target){
       clearInterval(int);
@@ -180,30 +232,49 @@ function animateMove(pawn,target){
 
 /* ================= ACTIVITY ================= */
 function applyActivity(pawn){
+  if(gameEnded) return;
   const v=visualPlayers[pawn];
   const type=activityCells[v.pos];
   if(!type) return;
 
   const act=ACTIVITIES[type];
-  const times = v.pos>=91 ? 2 : 1;
+  const a=act.actions[Math.floor(Math.random()*act.actions.length)];
+  showMessage(a.t);
 
-  for(let i=0;i<times;i++){
-    const a=act.actions[Math.floor(Math.random()*act.actions.length)];
-    showMessage((times>1?"🔥 SPRINT! ":"")+a.t);
-
-    if(a.m){
-      v.pos=Math.max(1,Math.min(100,v.pos+a.m));
-    }
-    if(a.s!==undefined){
-      const list=Object.values(visualPlayers);
-      if(list[a.s]){
-        const tmp=v.pos;
-        v.pos=list[a.s].pos;
-        list[a.s].pos=tmp;
-      }
+  if(a.m) v.pos=Math.max(1,Math.min(100,v.pos+a.m));
+  if(a.s!==undefined){
+    const list=Object.values(visualPlayers);
+    if(list[a.s]){
+      const tmp=v.pos;
+      v.pos=list[a.s].pos;
+      list[a.s].pos=tmp;
     }
   }
   draw();
+}
+
+/* ================= WINNER ================= */
+function showWinner(pawn){
+  gameEnded=true;
+  clearIntervals();
+  winSound();
+  launchConfetti();
+
+  document.getElementById("winnerImg").src=images[pawn].src;
+  document.getElementById("winner").style.opacity=1;
+}
+
+/* ================= CONFETTI ================= */
+function launchConfetti(){
+  for(let i=0;i<80;i++){
+    const c=document.createElement("div");
+    c.className="confetti";
+    c.style.left=Math.random()*100+"vw";
+    c.style.background=`hsl(${Math.random()*360},100%,50%)`;
+    c.style.animationDuration=2+Math.random()*2+"s";
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(),4000);
+  }
 }
 
 /* ================= CLEANUP ================= */
@@ -220,14 +291,13 @@ function draw(){
     const n=i+1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
-    const x=c*CELL, y=(9-r)*CELL;
+    const x=c*CELL,y=(9-r)*CELL;
 
     ctx.fillStyle=activityCells[n]?ACTIVITIES[activityCells[n]].color:"#2F6364";
     ctx.fillRect(x,y,CELL,CELL);
-    ctx.strokeStyle="#ffffff55";
-    ctx.strokeRect(x,y,CELL,CELL);
+    ctx.strokeStyle="#ffffff55"; ctx.strokeRect(x,y,CELL,CELL);
 
-    ctx.fillStyle="rgba(0,0,0,0.35)";
+    ctx.fillStyle="rgba(0,0,0,.35)";
     ctx.font="bold 20px Arial";
     ctx.textAlign="center";
     ctx.textBaseline="middle";
@@ -243,7 +313,7 @@ function draw(){
     const i=p.pos-1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
-    const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
+    const cx=c*CELL+CELL/2,cy=(9-r)*CELL+CELL/2;
 
     const img=images[pawn];
     if(img && img.complete){
@@ -267,15 +337,19 @@ function showMessage(t){
 
 /* ================= UI ================= */
 document.getElementById("startBtn").onclick=()=>{
+  gameEnded=false;
+  document.getElementById("winner").style.opacity=0;
   generateActivities();
   ws.send(JSON.stringify({type:"START"}));
 };
 
 document.getElementById("resetBtn").onclick=()=>{
+  gameEnded=false;
   clearIntervals();
   visualPlayers={};
   players={};
   generateActivities();
+  document.getElementById("winner").style.opacity=0;
   ws.send(JSON.stringify({type:"RESET"}));
   draw();
 };
