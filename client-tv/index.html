@@ -12,33 +12,60 @@ body{
   font-family:Arial, sans-serif;
 }
 #root{
-  display:flex;
-  justify-content:center;
+  display:grid;
+  grid-template-columns:220px auto 260px;
   align-items:center;
   height:100vh;
   gap:24px;
+  padding:24px;
 }
-canvas{ background:#2F6364; }
 
-#sidebar{
-  width:260px;
+/* LEFT */
+#controls{
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  align-items:center;
 }
-#sidebar h2{
-  text-align:center;
-  margin-bottom:10px;
+button{
+  width:180px;
+  padding:16px;
+  font-size:22px;
+  border:none;
+  border-radius:18px;
+  background:#FFD166;
+  font-weight:bold;
+  cursor:pointer;
+}
+#qr img{
+  background:#fff;
+  padding:10px;
+  border-radius:14px;
+}
+
+/* CENTER */
+canvas{
+  background:#2F6364;
+  border-radius:16px;
+}
+
+/* RIGHT */
+#scores{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
 }
 .score{
   display:flex;
   align-items:center;
   justify-content:space-between;
   background:#333;
-  padding:8px 12px;
-  border-radius:10px;
-  margin-bottom:8px;
+  padding:10px 14px;
+  border-radius:14px;
 }
 .score img{
-  width:40px;
-  height:40px;
+  width:42px;
+  height:42px;
   object-fit:contain;
 }
 .points{
@@ -47,54 +74,57 @@ canvas{ background:#2F6364; }
 }
 
 /* OVERLAY */
-.overlay{
+#overlay{
   position:fixed;
   inset:0;
+  background:rgba(0,0,0,.6);
   display:flex;
   justify-content:center;
   align-items:center;
-  background:rgba(0,0,0,.6);
-  font-size:46px;
+  font-size:48px;
   font-weight:bold;
-  text-align:center;
   opacity:0;
   pointer-events:none;
   transition:.3s;
 }
-.overlay.show{ opacity:1; }
-
-#qr{
-  margin-top:20px;
-  text-align:center;
-}
-#qr img{ background:#fff; padding:10px; border-radius:12px; }
+#overlay.show{ opacity:1; }
 </style>
 </head>
 
 <body>
 
 <div id="root">
-  <canvas id="board" width="800" height="800"></canvas>
 
-  <div id="sidebar">
-    <h2>🏆 Πόντοι</h2>
-    <div id="scores"></div>
-
+  <!-- LEFT -->
+  <div id="controls">
+    <button id="startBtn">START</button>
+    <button id="resetBtn">RESTART</button>
     <div id="qr">
-      <img id="qrImg" width="180">
-      <div>Scan & Play</div>
+      <img id="qrImg" width="160">
     </div>
   </div>
+
+  <!-- CENTER -->
+  <canvas id="board" width="800" height="800"></canvas>
+
+  <!-- RIGHT -->
+  <div>
+    <h2 style="text-align:center">🏆 Πόντοι</h2>
+    <div id="scores"></div>
+  </div>
+
 </div>
 
-<div id="overlay" class="overlay"></div>
+<div id="overlay"></div>
 
 <script>
+/* ===== CANVAS ===== */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
 const CELL=canvas.width/10;
 const COLOR_A="#3A7F80", COLOR_B="#2F6364";
 
+/* ===== STATE ===== */
 let players={}, scores={}, visuals={}, images={};
 
 /* LOAD AVATARS */
@@ -104,14 +134,14 @@ for(let i=1;i<=10;i++){
   images[`avatar_${i}`]=img;
 }
 
-/* DRAW BOARD */
+/* DRAW */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   for(let i=0;i<100;i++){
     const n=i+1;
     const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-i%10;
+    const c=r%2===0?i%10:9-(i%10);
     const x=c*CELL,y=(9-r)*CELL;
 
     ctx.fillStyle=n%2?COLOR_A:COLOR_B;
@@ -119,7 +149,7 @@ function draw(){
     ctx.strokeStyle="#ffffff44";
     ctx.strokeRect(x,y,CELL,CELL);
 
-    ctx.fillStyle="rgba(0,0,0,.4)";
+    ctx.fillStyle="rgba(0,0,0,.35)";
     ctx.font="bold 18px Arial";
     ctx.textAlign="center";
     ctx.textBaseline="middle";
@@ -130,7 +160,7 @@ function draw(){
     if(p.pos<=0) return;
     const i=p.pos-1;
     const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-i%10;
+    const c=r%2===0?i%10:9-(i%10);
     const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
     const img=images[p.pawn];
     if(img?.complete){
@@ -140,7 +170,7 @@ function draw(){
   });
 }
 
-/* SCOREBOARD */
+/* SCORES */
 function updateScores(){
   const box=document.getElementById("scores");
   box.innerHTML="";
@@ -159,7 +189,7 @@ function updateScores(){
 
 /* OVERLAY */
 const overlay=document.getElementById("overlay");
-function showOverlay(text,ms=3000){
+function showOverlay(text,ms=3500){
   overlay.textContent=text;
   overlay.classList.add("show");
   setTimeout(()=>overlay.classList.remove("show"),ms);
@@ -176,25 +206,33 @@ ws.onmessage=e=>{
   if(type==="INIT"||type==="UPDATE"){
     players=data.players;
     scores=data.scores||scores;
+
     Object.keys(players).forEach(id=>{
       visuals[id]??={ pawn:players[id].pawn, pos:players[id].pos };
       visuals[id].pos=players[id].pos;
     });
+
     updateScores();
     draw();
   }
 
   if(type==="ROUND_RESULT"){
-    const winner=data.order[0];
-    showOverlay("🏁 Νικητής γύρου!",3000);
+    showOverlay("🏁 Τέλος γύρου!");
     scores=data.scores;
     updateScores();
   }
 
   if(type==="TOURNAMENT_WINNER"){
-    const winId=data.id;
     showOverlay("🏆 ΤΕΛΙΚΟΣ ΝΙΚΗΤΗΣ!",6000);
   }
+};
+
+/* BUTTONS */
+document.getElementById("startBtn").onclick=()=>{
+  ws.send(JSON.stringify({type:"START"}));
+};
+document.getElementById("resetBtn").onclick=()=>{
+  ws.send(JSON.stringify({type:"RESET"}));
 };
 
 document.getElementById("qrImg").src=
