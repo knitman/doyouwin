@@ -68,7 +68,7 @@ canvas{
   font-weight:bold;
 }
 
-/* OVERLAY (dice + bonus + messages) */
+/* OVERLAY */
 #overlay{
   position:fixed;
   inset:0;
@@ -77,7 +77,7 @@ canvas{
   justify-content:center;
   align-items:center;
   text-align:center;
-  font-size:56px;
+  font-size:48px;
   font-weight:bold;
   opacity:0;
   pointer-events:none;
@@ -85,6 +85,12 @@ canvas{
   z-index:10;
 }
 #overlay.show{ opacity:1; }
+#overlay img{
+  width:120px;
+  height:120px;
+  object-fit:contain;
+  margin-bottom:20px;
+}
 </style>
 </head>
 
@@ -92,7 +98,6 @@ canvas{
 
 <div id="root">
 
-  <!-- LEFT -->
   <div id="controls">
     <select id="targetSelect">
       <option value="50">50</option>
@@ -107,10 +112,8 @@ canvas{
     <img id="qrImg" width="160">
   </div>
 
-  <!-- CENTER -->
   <canvas id="board" width="800" height="800"></canvas>
 
-  <!-- RIGHT -->
   <div>
     <h2 style="text-align:center">🏆 Πόντοι</h2>
     <div id="scores"></div>
@@ -127,25 +130,21 @@ canvas{
 <audio id="bgMusic" src="/assets/sounds/bg.mp3" loop></audio>
 
 <script>
-/* ================= CONFIG ================= */
-const STEP_DURATION = 1000;   // 1s ανά τετράγωνο
+const STEP_DURATION = 1000;
 const DICE_DISPLAY_MS = 2500;
 
-/* ================= CANVAS ================= */
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const CELL = canvas.width / 10;
 const COLOR_A = "#3A7F80";
 const COLOR_B = "#2F6364";
 
-/* ================= AUDIO ================= */
 const stepSound = document.getElementById("stepSound");
 const jackpotSound = document.getElementById("jackpotSound");
 const leaderSound = document.getElementById("leaderSound");
 const bgMusic = document.getElementById("bgMusic");
 bgMusic.volume = 0.25;
 
-/* ================= STATE ================= */
 let players = {};
 let scores = {};
 let visuals = {};
@@ -153,28 +152,25 @@ let images = {};
 let winPoints = 50;
 let lastLeader = null;
 
-/* ================= LOAD AVATARS ================= */
+/* AVATARS */
 for(let i=1;i<=10;i++){
   const img = new Image();
   img.src = `/assets/pawns/avatar_${i}.png`;
   images[`avatar_${i}`] = img;
 }
 
-/* ================= DRAW BOARD ================= */
+/* DRAW */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
   for(let i=0;i<100;i++){
     const n=i+1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
     const x=c*CELL,y=(9-r)*CELL;
-
     ctx.fillStyle=n%2?COLOR_A:COLOR_B;
     ctx.fillRect(x,y,CELL,CELL);
     ctx.strokeStyle="#ffffff44";
     ctx.strokeRect(x,y,CELL,CELL);
-
     ctx.fillStyle="rgba(0,0,0,.35)";
     ctx.font="bold 18px Arial";
     ctx.textAlign="center";
@@ -197,35 +193,33 @@ function draw(){
   });
 }
 
-/* ================= MOVE ================= */
+/* MOVE */
 function animateMove(id,newPos){
-  const p = visuals[id];
-  let cur = p.pos;
-  const step = newPos > cur ? 1 : -1;
-
-  const timer = setInterval(()=>{
-    cur += step;
-    p.pos = cur;
-    stepSound.currentTime = 0;
+  const p=visuals[id];
+  let cur=p.pos;
+  const step=newPos>cur?1:-1;
+  const timer=setInterval(()=>{
+    cur+=step;
+    p.pos=cur;
+    stepSound.currentTime=0;
     stepSound.play();
     draw();
-    if(cur === newPos) clearInterval(timer);
-  }, STEP_DURATION);
+    if(cur===newPos) clearInterval(timer);
+  },STEP_DURATION);
 }
 
-/* ================= SCOREBOARD ================= */
+/* SCOREBOARD */
 function updateScores(){
   const box=document.getElementById("scores");
   box.innerHTML="";
-
-  const ordered = Object.keys(scores)
+  const ordered=Object.keys(scores)
     .map(id=>({id,score:scores[id]}))
     .sort((a,b)=>b.score-a.score);
 
-  const leader = ordered[0]?.id;
+  const leader=ordered[0]?.id;
   if(leader && leader!==lastLeader){
     leaderSound.play();
-    lastLeader = leader;
+    lastLeader=leader;
   }
 
   ordered.forEach((item,i)=>{
@@ -241,15 +235,15 @@ function updateScores(){
   });
 }
 
-/* ================= OVERLAY ================= */
+/* OVERLAY */
 const overlay=document.getElementById("overlay");
-function showOverlay(text,ms){
-  overlay.innerHTML=text;
+function showOverlay(html,ms){
+  overlay.innerHTML=html;
   overlay.classList.add("show");
   setTimeout(()=>overlay.classList.remove("show"),ms);
 }
 
-/* ================= WS ================= */
+/* WS */
 const ws=new WebSocket(
   (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
@@ -264,7 +258,7 @@ ws.onmessage=e=>{
 
     Object.keys(players).forEach(id=>{
       visuals[id] ??= { pawn:players[id].pawn, pos:0 };
-      if(players[id].pos !== visuals[id].pos){
+      if(players[id].pos!==visuals[id].pos){
         animateMove(id,players[id].pos);
       }
     });
@@ -274,22 +268,22 @@ ws.onmessage=e=>{
   }
 
   if(type==="DICE"){
-    showOverlay(`🎲 ${data.dice}`, DICE_DISPLAY_MS);
+    showOverlay(`<div>🎲 ${data.dice}</div>`,DICE_DISPLAY_MS);
   }
 
   if(type==="BONUS"){
-    const p = players[data.id];
-    const pawnLabel = p ? `(${p.pawn})` : "";
+    const p=players[data.id];
     if(data.bonus>=8) jackpotSound.play();
 
-    showOverlay(
-      data.bonus>=8
-        ? `🎉 JACKPOT ${pawnLabel}<br>+${data.bonus} πόντοι`
-        : data.bonus>0
-          ? `🎁 ${pawnLabel}<br>+${data.bonus} πόντοι`
-          : `⚠️ ${pawnLabel}<br>${data.bonus} πόντοι`,
-      data.bonus>=8?7000:5000
-    );
+    showOverlay(`
+      <div>
+        <img src="/assets/pawns/${p.pawn}.png">
+        <div>
+          ${data.bonus>=8?"🎉 JACKPOT":data.bonus>0?"🎁 BONUS":"⚠️ ΠΟΙΝΗ"}<br>
+          ${data.bonus>0?"+":""}${data.bonus} πόντοι
+        </div>
+      </div>
+    `,data.bonus>=8?7000:5000);
 
     scores=data.scores;
     updateScores();
@@ -308,7 +302,7 @@ ws.onmessage=e=>{
   }
 };
 
-/* ================= CONTROLS ================= */
+/* CONTROLS */
 startBtn.onclick=()=>{
   bgMusic.currentTime=0;
   bgMusic.play().catch(()=>{});
