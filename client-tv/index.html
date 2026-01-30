@@ -2,261 +2,205 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8">
-<title>Party Board TV</title>
+<title>Party Board – TV</title>
 
 <style>
 body{
   margin:0;
   background:#1b1b1b;
-  height:100vh;
+  color:#fff;
+  font-family:Arial, sans-serif;
+}
+#root{
   display:flex;
   justify-content:center;
   align-items:center;
-  font-family:Arial, sans-serif;
-}
-#layout{
-  display:grid;
-  grid-template-columns:auto auto;
+  height:100vh;
   gap:24px;
 }
 canvas{ background:#2F6364; }
-#sideUI{
+
+#sidebar{
+  width:260px;
+}
+#sidebar h2{
+  text-align:center;
+  margin-bottom:10px;
+}
+.score{
   display:flex;
-  flex-direction:column;
-  gap:16px;
   align-items:center;
+  justify-content:space-between;
+  background:#333;
+  padding:8px 12px;
+  border-radius:10px;
+  margin-bottom:8px;
 }
-button{
-  width:160px;
-  padding:14px;
-  font-size:20px;
-  border:none;
-  border-radius:14px;
-  background:#FFD166;
+.score img{
+  width:40px;
+  height:40px;
+  object-fit:contain;
+}
+.points{
+  font-size:22px;
   font-weight:bold;
-  cursor:pointer;
-}
-#qr{
-  background:white;
-  padding:12px;
-  border-radius:14px;
 }
 
-/* COMMAND OVERLAY */
-#commandOverlay{
+/* OVERLAY */
+.overlay{
   position:fixed;
   inset:0;
   display:flex;
   justify-content:center;
   align-items:center;
-  pointer-events:none;
-  opacity:0;
-}
-#commandBox{
-  background:#FFD166;
-  color:#000;
-  padding:42px 64px;
-  border-radius:56px;
-  font-size:38px;
+  background:rgba(0,0,0,.6);
+  font-size:46px;
   font-weight:bold;
   text-align:center;
-  box-shadow:0 30px 60px rgba(0,0,0,.5);
+  opacity:0;
+  pointer-events:none;
+  transition:.3s;
 }
+.overlay.show{ opacity:1; }
+
+#qr{
+  margin-top:20px;
+  text-align:center;
+}
+#qr img{ background:#fff; padding:10px; border-radius:12px; }
 </style>
 </head>
 
 <body>
 
-<div id="layout">
+<div id="root">
   <canvas id="board" width="800" height="800"></canvas>
-  <div id="sideUI">
-    <button id="startBtn">START</button>
-    <button id="resetBtn">RESTART</button>
-    <div id="qr"><img id="qrImg" width="160"></div>
+
+  <div id="sidebar">
+    <h2>🏆 Πόντοι</h2>
+    <div id="scores"></div>
+
+    <div id="qr">
+      <img id="qrImg" width="180">
+      <div>Scan & Play</div>
+    </div>
   </div>
 </div>
 
-<div id="commandOverlay"><div id="commandBox"></div></div>
+<div id="overlay" class="overlay"></div>
 
 <script>
-/* ===== CANVAS ===== */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
 const CELL=canvas.width/10;
 const COLOR_A="#3A7F80", COLOR_B="#2F6364";
 
-/* ===== STATE ===== */
-let players={}, visualPlayers={}, images={}, activityCells={};
-let animating=false;
+let players={}, scores={}, visuals={}, images={};
 
-/* ===== LOAD AVATARS ===== */
+/* LOAD AVATARS */
 for(let i=1;i<=10;i++){
   const img=new Image();
   img.src=`/assets/pawns/avatar_${i}.png`;
   images[`avatar_${i}`]=img;
 }
 
-/* ===== ACTIVITIES ===== */
-const ACTIVITIES={
-  move2:[
-    {text:"➡️ Πήγαινε 2 μπροστά",delta:2},
-    {text:"⬅️ Πήγαινε 2 πίσω",delta:-2}
-  ],
-  move3:[
-    {text:"➡️ Πήγαινε 3 μπροστά",delta:3},
-    {text:"⬅️ Πήγαινε 3 πίσω",delta:-3}
-  ],
-  swap:[
-    {text:"🔄 Αντάλλαξε θέση με άλλον παίκτη",swap:true}
-  ]
-};
-
-function generateActivities(){
-  activityCells={};
-  while(Object.keys(activityCells).length<25){
-    const n=Math.floor(Math.random()*98)+2;
-    const k=Object.keys(ACTIVITIES);
-    activityCells[n]=k[Math.floor(Math.random()*k.length)];
-  }
-}
-
-/* ===== WS ===== */
-const ws=new WebSocket(
-  (location.protocol==="https:"?"wss://":"ws://")+location.host
-);
-
-ws.onmessage=e=>{
-  const {type,data}=JSON.parse(e.data);
-  if(type==="INIT"||type==="UPDATE"){
-    players=data.players;
-    syncVisuals();
-  }
-};
-
-/* ===== SYNC ===== */
-function syncVisuals(){
-  Object.values(players).forEach(p=>{
-    if(p.pos===0) return;
-    if(!visualPlayers[p.pawn]){
-      visualPlayers[p.pawn]={pos:p.pos};
-    }
-    if(p.pos!==visualPlayers[p.pawn].pos){
-      animatePawn(p.pawn,p.pos);
-    }
-  });
-}
-
-/* ===== ANIMATION CORE ===== */
-function animatePawn(pawn,target){
-  if(animating) return;
-  animating=true;
-
-  const v=visualPlayers[pawn];
-  const dir=Math.sign(target-v.pos);
-
-  const step=setInterval(()=>{
-    if(v.pos===target){
-      clearInterval(step);
-      animating=false;
-      handleLanding(pawn);
-      return;
-    }
-    v.pos+=dir;
-    draw();
-  },180);
-}
-
-/* ===== LANDING ===== */
-function handleLanding(pawn){
-  const v=visualPlayers[pawn];
-  const type=activityCells[v.pos];
-  if(!type) return;
-
-  const action=ACTIVITIES[type][
-    Math.floor(Math.random()*ACTIVITIES[type].length)
-  ];
-
-  showCommand(action.text);
-
-  setTimeout(()=>{
-    if(action.delta){
-      const target=Math.max(1,Math.min(100,v.pos+action.delta));
-      animatePawn(pawn,target);
-    }
-    if(action.swap){
-      const others=Object.entries(visualPlayers)
-        .filter(([k])=>k!==pawn);
-      if(others.length){
-        const [_,t]=others[Math.floor(Math.random()*others.length)];
-        [v.pos,t.pos]=[t.pos,v.pos];
-        draw();
-      }
-    }
-  },300);
-}
-
-/* ===== DRAW ===== */
+/* DRAW BOARD */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   for(let i=0;i<100;i++){
     const n=i+1;
     const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
+    const c=r%2===0?i%10:9-i%10;
     const x=c*CELL,y=(9-r)*CELL;
 
-    ctx.fillStyle=(n%2)?COLOR_A:COLOR_B;
+    ctx.fillStyle=n%2?COLOR_A:COLOR_B;
     ctx.fillRect(x,y,CELL,CELL);
     ctx.strokeStyle="#ffffff44";
     ctx.strokeRect(x,y,CELL,CELL);
 
-    ctx.fillStyle="rgba(0,0,0,.35)";
-    ctx.font="bold 20px Arial";
+    ctx.fillStyle="rgba(0,0,0,.4)";
+    ctx.font="bold 18px Arial";
     ctx.textAlign="center";
     ctx.textBaseline="middle";
     ctx.fillText(n,x+CELL/2,y+CELL/2);
   }
 
-  Object.entries(visualPlayers).forEach(([pawn,p])=>{
+  Object.values(visuals).forEach(p=>{
+    if(p.pos<=0) return;
     const i=p.pos-1;
     const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
+    const c=r%2===0?i%10:9-i%10;
     const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
-    const img=images[pawn];
-    if(img&&img.complete){
-      const size=CELL*0.65;
-      ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
+    const img=images[p.pawn];
+    if(img?.complete){
+      const s=CELL*0.65;
+      ctx.drawImage(img,cx-s/2,cy-s/2,s,s);
     }
   });
 }
 
-/* ===== COMMAND UI ===== */
-const overlay=document.getElementById("commandOverlay");
-const box=document.getElementById("commandBox");
-function showCommand(t){
-  box.textContent=t;
-  overlay.style.opacity=1;
-  setTimeout(()=>overlay.style.opacity=0,2500);
+/* SCOREBOARD */
+function updateScores(){
+  const box=document.getElementById("scores");
+  box.innerHTML="";
+  Object.keys(scores).forEach(id=>{
+    const p=players[id];
+    if(!p) return;
+    const row=document.createElement("div");
+    row.className="score";
+    row.innerHTML=`
+      <img src="${images[p.pawn].src}">
+      <div class="points">${scores[id]}</div>
+    `;
+    box.appendChild(row);
+  });
 }
 
-/* ===== UI ===== */
-document.getElementById("startBtn").onclick=()=>{
-  generateActivities();
-  ws.send(JSON.stringify({type:"START"}));
-};
-document.getElementById("resetBtn").onclick=()=>{
-  visualPlayers={};
-  players={};
-  generateActivities();
-  ws.send(JSON.stringify({type:"RESET"}));
-  draw();
+/* OVERLAY */
+const overlay=document.getElementById("overlay");
+function showOverlay(text,ms=3000){
+  overlay.textContent=text;
+  overlay.classList.add("show");
+  setTimeout(()=>overlay.classList.remove("show"),ms);
+}
+
+/* WS */
+const ws=new WebSocket(
+  (location.protocol==="https:"?"wss://":"ws://")+location.host
+);
+
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
+
+  if(type==="INIT"||type==="UPDATE"){
+    players=data.players;
+    scores=data.scores||scores;
+    Object.keys(players).forEach(id=>{
+      visuals[id]??={ pawn:players[id].pawn, pos:players[id].pos };
+      visuals[id].pos=players[id].pos;
+    });
+    updateScores();
+    draw();
+  }
+
+  if(type==="ROUND_RESULT"){
+    const winner=data.order[0];
+    showOverlay("🏁 Νικητής γύρου!",3000);
+    scores=data.scores;
+    updateScores();
+  }
+
+  if(type==="TOURNAMENT_WINNER"){
+    const winId=data.id;
+    showOverlay("🏆 ΤΕΛΙΚΟΣ ΝΙΚΗΤΗΣ!",6000);
+  }
 };
 
 document.getElementById("qrImg").src=
   "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+
   encodeURIComponent(location.origin+"/phone");
 
-generateActivities();
 draw();
 </script>
 
