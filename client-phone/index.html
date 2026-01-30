@@ -35,7 +35,7 @@ body{
 button{
   width:100%;
   padding:18px;
-  margin-top:20px;
+  margin-top:18px;
   font-size:26px;
   border:none;
   border-radius:22px;
@@ -67,7 +67,7 @@ const ws=new WebSocket(
 let myId=null,myPawn=null,myTurn=false,myScore=0;
 
 /* AVATARS */
-const box=document.getElementById("avatars");
+avatars.innerHTML="";
 for(let i=1;i<=10;i++){
   const d=document.createElement("div");
   d.className="avatar";
@@ -78,15 +78,15 @@ for(let i=1;i<=10;i++){
     myPawn=`avatar_${i}`;
     ready.disabled=false;
   };
-  box.appendChild(d);
+  avatars.appendChild(d);
 }
 
 /* READY */
 ready.onclick=()=>{
   ws.send(JSON.stringify({type:"JOIN",data:{pawn:myPawn}}));
   ready.style.display="none";
-  box.style.display="none";
-  info.textContent="Περιμένεις...";
+  avatars.style.display="none";
+  info.textContent="Περιμένεις…";
 };
 
 /* DICE */
@@ -95,7 +95,7 @@ dice.onclick=()=>{
   ws.send(JSON.stringify({type:"ROLL"}));
   myTurn=false;
   dice.style.display="none";
-  info.textContent="Περιμένεις...";
+  info.textContent="Περιμένεις…";
 };
 
 /* WS */
@@ -113,12 +113,17 @@ ws.onmessage=e=>{
     }
   }
 
+  if(type==="BONUS" && data.id===myId){
+    navigator.vibrate?.(data.bonus>=8?[300,100,300]:[200]);
+    info.textContent=
+      data.bonus>=8 ? `🎉 JACKPOT +${data.bonus}` :
+      data.bonus>0 ? `➕ +${data.bonus} πόντοι` :
+                     `❌ ${data.bonus} πόντοι`;
+  }
+
   if(type==="TOURNAMENT_WINNER"){
-    if(data.id===myId){
-      info.textContent="🏆 ΚΕΡΔΙΣΕΣ ΤΟ ΤΟΥΡΝΟΥΑ!";
-    }else{
-      info.textContent="😅 Τέλος τουρνουά";
-    }
+    info.textContent =
+      data.id===myId ? "🏆 ΚΕΡΔΙΣΕΣ ΤΟ ΤΟΥΡΝΟΥΑ!" : "😅 Τέλος τουρνουά";
   }
 };
 </script>
