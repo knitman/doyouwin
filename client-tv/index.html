@@ -81,9 +81,7 @@ button{
   <div id="sideUI">
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
-    <div id="qr">
-      <img id="qrImg" width="160">
-    </div>
+    <div id="qr"><img id="qrImg" width="160"></div>
   </div>
 </div>
 
@@ -104,23 +102,19 @@ function stepSound(){
   o.start(); o.stop(audioCtx.currentTime+0.05);
 }
 
-/* ================= ACTIVITIES ================= */
+/* ================= ACTIVITIES DEF ================= */
 const ACTIVITIES={
   star:{symbol:"⭐",color:"#FFD166",actions:[{t:"Πήγαινε 2 μπροστά",m:2},{t:"Πήγαινε 3 μπροστά",m:3}]},
   circle:{symbol:"●",color:"#06D6A0",actions:[{t:"Πήγαινε 2 πίσω",m:-2},{t:"Πήγαινε 3 πίσω",m:-3}]},
   square:{symbol:"■",color:"#EF476F",actions:[{t:"Αντάλλαξε θέση με τον 3ο παίκτη",s:2}]}
 };
 
-/* ===== RANDOM ACTIVITY CELLS ===== */
-const activityCells={};
-while(Object.keys(activityCells).length<25){
-  const n=Math.floor(Math.random()*98)+2;
-  const k=Object.keys(ACTIVITIES);
-  activityCells[n]=k[Math.floor(Math.random()*k.length)];
-}
-
 /* ================= STATE ================= */
-let players={},visualPlayers={},images={};
+let players = {};
+let visualPlayers = {};
+let images = {};
+let activityCells = {};
+let activeIntervals = [];
 
 /* ================= LOAD AVATARS ================= */
 for(let i=1;i<=10;i++){
@@ -129,12 +123,23 @@ for(let i=1;i<=10;i++){
   images[`avatar_${i}`]=img;
 }
 
+/* ================= INIT ACTIVITIES ================= */
+function generateActivities(){
+  activityCells = {};
+  while(Object.keys(activityCells).length < 25){
+    const n=Math.floor(Math.random()*98)+2;
+    const k=Object.keys(ACTIVITIES);
+    activityCells[n]=k[Math.floor(Math.random()*k.length)];
+  }
+}
+
 /* ================= WS ================= */
 const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
 
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
-  if(type==="INIT"||type==="UPDATE"){
+
+  if(type==="INIT" || type==="UPDATE"){
     players=data.players;
     syncVisuals();
   }
@@ -150,18 +155,27 @@ function syncVisuals(){
       animateMove(p.pawn,p.pos);
     }
   });
+  draw();
 }
 
 /* ================= ANIMATE ================= */
 function animateMove(pawn,target){
   const v=visualPlayers[pawn];
+  clearIntervals();
+
   const dir=Math.sign(target-v.pos);
   const int=setInterval(()=>{
-    if(v.pos===target){clearInterval(int);applyActivity(pawn);return;}
+    if(v.pos===target){
+      clearInterval(int);
+      applyActivity(pawn);
+      return;
+    }
     v.pos+=dir;
     stepSound();
     draw();
   },180);
+
+  activeIntervals.push(int);
 }
 
 /* ================= ACTIVITY ================= */
@@ -171,7 +185,7 @@ function applyActivity(pawn){
   if(!type) return;
 
   const act=ACTIVITIES[type];
-  const times = v.pos >= 91 ? 2 : 1; // 🔥 SPRINT MODE
+  const times = v.pos>=91 ? 2 : 1;
 
   for(let i=0;i<times;i++){
     const a=act.actions[Math.floor(Math.random()*act.actions.length)];
@@ -189,6 +203,13 @@ function applyActivity(pawn){
       }
     }
   }
+  draw();
+}
+
+/* ================= CLEANUP ================= */
+function clearIntervals(){
+  activeIntervals.forEach(i=>clearInterval(i));
+  activeIntervals=[];
 }
 
 /* ================= DRAW ================= */
@@ -206,7 +227,6 @@ function draw(){
     ctx.strokeStyle="#ffffff55";
     ctx.strokeRect(x,y,CELL,CELL);
 
-    /* number center */
     ctx.fillStyle="rgba(0,0,0,0.35)";
     ctx.font="bold 20px Arial";
     ctx.textAlign="center";
@@ -216,13 +236,6 @@ function draw(){
     if(activityCells[n]){
       ctx.font="28px Arial";
       ctx.fillText(ACTIVITIES[activityCells[n]].symbol,x+CELL/2,y+CELL/2);
-    }
-
-    if(n>=91){
-      ctx.strokeStyle="#FFD166";
-      ctx.lineWidth=3;
-      ctx.strokeRect(x+2,y+2,CELL-4,CELL-4);
-      ctx.lineWidth=1;
     }
   }
 
@@ -253,12 +266,26 @@ function showMessage(t){
 }
 
 /* ================= UI ================= */
-document.getElementById("startBtn").onclick=()=>ws.send(JSON.stringify({type:"START"}));
-document.getElementById("resetBtn").onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
+document.getElementById("startBtn").onclick=()=>{
+  generateActivities();
+  ws.send(JSON.stringify({type:"START"}));
+};
+
+document.getElementById("resetBtn").onclick=()=>{
+  clearIntervals();
+  visualPlayers={};
+  players={};
+  generateActivities();
+  ws.send(JSON.stringify({type:"RESET"}));
+  draw();
+};
+
 document.getElementById("qrImg").src=
   "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+
   encodeURIComponent(location.origin+"/phone");
 
+/* ================= INIT ================= */
+generateActivities();
 draw();
 </script>
 
