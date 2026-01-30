@@ -29,9 +29,14 @@ body{
   padding:6px;
   cursor:pointer;
 }
-.avatar img{ width:100%; height:60px; object-fit:contain; }
-.avatar.sel{ outline:4px solid #FFD166; }
-
+.avatar img{
+  width:100%;
+  height:60px;
+  object-fit:contain;
+}
+.avatar.sel{
+  outline:4px solid #FFD166;
+}
 button{
   width:100%;
   padding:18px;
@@ -42,8 +47,15 @@ button{
   background:#FFD166;
   font-weight:bold;
 }
-#dice{ display:none; background:#EF476F; color:#fff; }
-#info{ margin-top:14px; font-size:18px; }
+#dice{
+  display:none;
+  background:#EF476F;
+  color:#fff;
+}
+#info{
+  margin-top:14px;
+  font-size:18px;
+}
 </style>
 </head>
 
@@ -60,14 +72,13 @@ button{
 </div>
 
 <script>
-const ws=new WebSocket(
- (location.protocol==="https:"?"wss://":"ws://")+location.host
+const ws = new WebSocket(
+  (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
-let myId=null,myPawn=null,myTurn=false,myScore=0;
+let myId=null, myPawn=null, myTurn=false, myScore=0;
 
 /* AVATARS */
-avatars.innerHTML="";
 for(let i=1;i<=10;i++){
   const d=document.createElement("div");
   d.className="avatar";
@@ -86,7 +97,7 @@ ready.onclick=()=>{
   ws.send(JSON.stringify({type:"JOIN",data:{pawn:myPawn}}));
   ready.style.display="none";
   avatars.style.display="none";
-  info.textContent="Περιμένεις…";
+  info.textContent="Περιμένεις...";
 };
 
 /* DICE */
@@ -95,7 +106,7 @@ dice.onclick=()=>{
   ws.send(JSON.stringify({type:"ROLL"}));
   myTurn=false;
   dice.style.display="none";
-  info.textContent="Περιμένεις…";
+  info.textContent="Περιμένεις...";
 };
 
 /* WS */
@@ -105,25 +116,28 @@ ws.onmessage=e=>{
   if(type==="INIT") myId=data.id;
 
   if(type==="UPDATE"){
-    myScore=data.scores?.[myId]??myScore;
+    myScore=data.scores?.[myId] ?? myScore;
     if(data.turn===myId){
       myTurn=true;
       dice.style.display="block";
-      info.textContent=`Η σειρά σου • Πόντοι: ${myScore}`;
+      info.textContent=`Η σειρά σου • Πόντοι: ${myScore}/${data.winPoints}`;
     }
   }
 
   if(type==="BONUS" && data.id===myId){
-    navigator.vibrate?.(data.bonus>=8?[300,100,300]:[200]);
-    info.textContent=
+    navigator.vibrate?.(data.bonus>=8?[300,150,300]:[200]);
+    info.textContent =
       data.bonus>=8 ? `🎉 JACKPOT +${data.bonus}` :
       data.bonus>0 ? `➕ +${data.bonus} πόντοι` :
                      `❌ ${data.bonus} πόντοι`;
+    setTimeout(()=>{},5000);
   }
 
   if(type==="TOURNAMENT_WINNER"){
     info.textContent =
-      data.id===myId ? "🏆 ΚΕΡΔΙΣΕΣ ΤΟ ΤΟΥΡΝΟΥΑ!" : "😅 Τέλος τουρνουά";
+      data.id===myId
+        ? `🏆 ΚΕΡΔΙΣΕΣ! (${data.winPoints})`
+        : `😅 Τέλος παιχνιδιού`;
   }
 };
 </script>
