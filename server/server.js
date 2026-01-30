@@ -14,17 +14,20 @@ const server = http.createServer((req, res) => {
       path.join(__dirname, "../client-tv/index.html")
     ).pipe(res);
   }
+
   if (req.url === "/phone") {
     return fs.createReadStream(
       path.join(__dirname, "../client-phone/index.html")
     ).pipe(res);
   }
+
   if (req.url.startsWith("/assets/")) {
     const file = path.join(__dirname, "../client-phone", req.url);
     if (fs.existsSync(file)) {
       return fs.createReadStream(file).pipe(res);
     }
   }
+
   res.end("Party Board Server Running");
 });
 
@@ -39,7 +42,7 @@ let gameState = "WAITING";
 let bonusTiles = new Set();
 let winPoints = 50;
 
-/* ===== BONUS ROLL ===== */
+/* ================= HELPERS ================= */
 function rollBonus() {
   const pool = [
     -2,
@@ -65,13 +68,6 @@ function generateBonusTiles() {
   }
 }
 
-function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-}
-
 function broadcast(type, data) {
   const msg = JSON.stringify({ type, data });
   wss.clients.forEach(c => {
@@ -79,9 +75,22 @@ function broadcast(type, data) {
   });
 }
 
+/* 🔥 ΝΕΟ: σειρά γύρου με βάση πόντους */
+function calculateTurnOrderByScore() {
+  return Object.keys(players)
+    .map(id => ({ id, score: scores[id] || 0 }))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return Math.random() - 0.5; // ισοβαθμία
+    })
+    .map(p => p.id);
+}
+
 function resetRound() {
-  Object.values(players).forEach(p => p.pos = 0);
+  Object.values(players).forEach(p => (p.pos = 0));
   generateBonusTiles();
+  turnOrder = calculateTurnOrderByScore();
+  currentTurn = 0;
 }
 
 function resetAll() {
@@ -118,11 +127,11 @@ wss.on("connection", ws => {
     }
 
     if (type === "START" && gameState === "WAITING") {
-      turnOrder = Object.keys(players);
-      shuffle(turnOrder);
+      turnOrder = calculateTurnOrderByScore();
       currentTurn = 0;
       gameState = "PLAYING";
       generateBonusTiles();
+
       broadcast("UPDATE", {
         players,
         scores,
@@ -162,24 +171,29 @@ wss.on("connection", ws => {
           return;
         }
 
+        gameState = "ROUND_END";
         let t = ROUND_DELAY;
         broadcast("ROUND_COUNTDOWN", { seconds: t });
+
         const timer = setInterval(() => {
           t--;
           broadcast("ROUND_COUNTDOWN", { seconds: t });
+
           if (t <= 0) {
             clearInterval(timer);
             resetRound();
             gameState = "WAITING";
+
             broadcast("UPDATE", {
               players,
               scores,
               gameState,
-              turn: null,
+              turn: turnOrder[currentTurn],
               winPoints
             });
           }
         }, 1000);
+
         return;
       }
 
