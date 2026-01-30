@@ -49,7 +49,7 @@ button{
   border-radius:14px;
 }
 
-/* CENTER MESSAGE */
+/* MESSAGE */
 #message{
   position:fixed;
   inset:0;
@@ -81,7 +81,9 @@ button{
   <div id="sideUI">
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
-    <div id="qr"><img id="qrImg" width="160"></div>
+    <div id="qr">
+      <img id="qrImg" width="160">
+    </div>
   </div>
 </div>
 
@@ -89,29 +91,17 @@ button{
 
 <script>
 /* ================= CANVAS ================= */
-const canvas=document.getElementById("board");
-const ctx=canvas.getContext("2d");
-const CELL=canvas.width/10;
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const CELL = canvas.width / 10;
 
 /* ================= AUDIO ================= */
-const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-
+const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
 function stepSound(){
-  const o=audioCtx.createOscillator();
-  const g=audioCtx.createGain();
-  o.type="square"; o.frequency.value=220;
-  g.gain.value=0.05;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type="square"; o.frequency.value=220; g.gain.value=0.05;
   o.connect(g).connect(audioCtx.destination);
   o.start(); o.stop(audioCtx.currentTime+0.05);
-}
-
-function swapSound(){
-  const o=audioCtx.createOscillator();
-  o.type="sawtooth";
-  o.frequency.setValueAtTime(600,audioCtx.currentTime);
-  o.frequency.exponentialRampToValueAtTime(200,audioCtx.currentTime+0.3);
-  o.connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+0.3);
 }
 
 /* ================= ACTIVITIES ================= */
@@ -129,7 +119,14 @@ while(Object.keys(activityCells).length<25){
 }
 
 /* ================= STATE ================= */
-let players={},visualPlayers={},lastPos={};
+let players={},visualPlayers={},images={};
+
+/* ================= LOAD AVATAR IMAGES ================= */
+for(let i=1;i<=10;i++){
+  const img=new Image();
+  img.src=`/assets/pawns/avatar_${i}.png`;
+  images[`avatar_${i}`]=img;
+}
 
 /* ================= WS ================= */
 const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
@@ -142,24 +139,25 @@ ws.onmessage=e=>{
   }
 };
 
-/* ================= VISUAL SYNC ================= */
+/* ================= SYNC ================= */
 function syncVisuals(){
   Object.values(players).forEach(p=>{
-    if(!visualPlayers[p.pawn]) visualPlayers[p.pawn]={pos:p.pos,glow:0};
+    if(!visualPlayers[p.pawn]){
+      visualPlayers[p.pawn]={pos:p.pos};
+    }
     if(p.pos!==visualPlayers[p.pawn].pos){
       animateMove(p.pawn,p.pos);
     }
   });
 }
 
-/* ================= ANIMATION ================= */
+/* ================= ANIMATE ================= */
 function animateMove(pawn,target){
   const v=visualPlayers[pawn];
   const dir=Math.sign(target-v.pos);
-  const interval=setInterval(()=>{
-    if(v.pos===target){clearInterval(interval);applyActivity(pawn);return;}
+  const int=setInterval(()=>{
+    if(v.pos===target){clearInterval(int);applyActivity(pawn);return;}
     v.pos+=dir;
-    v.glow=10;
     stepSound();
     draw();
   },180);
@@ -173,7 +171,6 @@ function applyActivity(pawn){
 
   const act=ACTIVITIES[type];
   const a=act.actions[Math.floor(Math.random()*act.actions.length)];
-
   showMessage(a.t);
 
   if(a.m){
@@ -182,7 +179,6 @@ function applyActivity(pawn){
   if(a.s!==undefined){
     const list=Object.values(visualPlayers);
     if(list[a.s]){
-      swapSound();
       const tmp=v.pos;
       v.pos=list[a.s].pos;
       list[a.s].pos=tmp;
@@ -198,36 +194,35 @@ function draw(){
     const n=i+1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
-    const x=c*CELL,y=(9-r)*CELL;
+    const x=c*CELL, y=(9-r)*CELL;
+
     ctx.fillStyle=activityCells[n]?ACTIVITIES[activityCells[n]].color:"#2F6364";
     ctx.fillRect(x,y,CELL,CELL);
     ctx.strokeStyle="#ffffff55"; ctx.strokeRect(x,y,CELL,CELL);
     ctx.fillStyle="#000"; ctx.font="bold 14px Arial";
     ctx.fillText(n,x+4,y+14);
+
     if(activityCells[n]){
       ctx.font="26px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.fillText(ACTIVITIES[activityCells[n]].symbol,x+CELL/2,y+CELL/2);
     }
   }
 
-  Object.entries(visualPlayers).forEach(([k,p])=>{
+  Object.entries(visualPlayers).forEach(([pawn,p])=>{
     const i=p.pos-1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
     const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
 
-    if(p.glow>0){
-      ctx.shadowBlur=20; ctx.shadowColor="#FFD166"; p.glow--;
+    const img=images[pawn];
+    if(img && img.complete){
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx,cy,CELL*0.3,0,Math.PI*2);
+      ctx.clip();
+      ctx.drawImage(img,cx-CELL*0.3,cy-CELL*0.3,CELL*0.6,CELL*0.6);
+      ctx.restore();
     }
-    ctx.beginPath();
-    ctx.fillStyle="#FFD166";
-    ctx.arc(cx,cy,CELL*0.28,0,Math.PI*2);
-    ctx.fill();
-    ctx.shadowBlur=0;
-
-    ctx.fillStyle="#000"; ctx.font="bold 16px Arial";
-    ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText("A"+k.split("_")[1],cx,cy);
   });
 }
 
@@ -242,7 +237,9 @@ function showMessage(t){
 /* ================= UI ================= */
 document.getElementById("startBtn").onclick=()=>ws.send(JSON.stringify({type:"START"}));
 document.getElementById("resetBtn").onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
-document.getElementById("qrImg").src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+encodeURIComponent(location.origin+"/phone");
+document.getElementById("qrImg").src=
+  "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+
+  encodeURIComponent(location.origin+"/phone");
 
 draw();
 </script>
