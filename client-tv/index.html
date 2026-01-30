@@ -13,79 +13,43 @@ body{
 }
 #root{
   display:grid;
-  grid-template-columns:220px auto 260px;
+  grid-template-columns:240px auto 280px;
   height:100vh;
   gap:24px;
   padding:24px;
 }
-
-/* LEFT */
 #controls{
   display:flex;
   flex-direction:column;
-  gap:18px;
+  gap:16px;
   align-items:center;
 }
-button{
-  width:180px;
-  padding:16px;
-  font-size:22px;
+button,select{
+  width:190px;
+  padding:14px;
+  font-size:20px;
   border:none;
-  border-radius:18px;
-  background:#FFD166;
-  font-weight:bold;
-  cursor:pointer;
-}
-#qr img{
-  background:#fff;
-  padding:10px;
-  border-radius:14px;
-}
-
-/* CENTER */
-canvas{
-  background:#2F6364;
   border-radius:16px;
 }
+button{ background:#FFD166; font-weight:bold; }
+canvas{ background:#2F6364; border-radius:16px; }
 
-/* RIGHT */
-#scores{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
+#scores{ display:flex; flex-direction:column; gap:10px; }
 .score{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  background:#333;
-  padding:10px 14px;
-  border-radius:14px;
+  display:flex; justify-content:space-between; align-items:center;
+  background:#333; padding:10px 14px; border-radius:14px;
+  transition:all .4s ease;
 }
-.score img{
-  width:42px;
-  height:42px;
-  object-fit:contain;
-}
-.points{
-  font-size:22px;
-  font-weight:bold;
-}
+.score.leader{ background:#FFD166; color:#000; font-weight:bold; }
+.score img{ width:42px; height:42px; object-fit:contain; }
+.points{ font-size:22px; font-weight:bold; }
 
-/* OVERLAY */
 #overlay{
-  position:fixed;
-  inset:0;
+  position:fixed; inset:0;
   background:rgba(0,0,0,.65);
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  text-align:center;
-  font-size:48px;
-  font-weight:bold;
-  opacity:0;
-  pointer-events:none;
-  transition:.3s;
+  display:flex; justify-content:center; align-items:center;
+  text-align:center; font-size:48px; font-weight:bold;
+  opacity:0; pointer-events:none; transition:.3s;
 }
 #overlay.show{ opacity:1; }
 </style>
@@ -94,34 +58,39 @@ canvas{
 <body>
 
 <div id="root">
-
-  <!-- LEFT -->
   <div id="controls">
+    <select id="targetSelect">
+      <option value="50">50</option>
+      <option value="100">100</option>
+      <option value="150">150</option>
+      <option value="200">200</option>
+    </select>
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
-    <div id="qr"><img id="qrImg" width="160"></div>
+    <img id="qrImg" width="160">
   </div>
 
-  <!-- CENTER -->
   <canvas id="board" width="800" height="800"></canvas>
 
-  <!-- RIGHT -->
   <div>
     <h2 style="text-align:center">🏆 Πόντοι</h2>
     <div id="scores"></div>
   </div>
-
 </div>
 
 <div id="overlay"></div>
 
+<audio id="stepSound" src="/assets/sounds/step.mp3"></audio>
+<audio id="jackpotSound" src="/assets/sounds/jackpot.mp3"></audio>
+
 <script>
-const canvas=document.getElementById("board");
-const ctx=canvas.getContext("2d");
+const canvas=board, ctx=canvas.getContext("2d");
 const CELL=canvas.width/10;
 const COLOR_A="#3A7F80", COLOR_B="#2F6364";
+const stepSound=document.getElementById("stepSound");
+const jackpotSound=document.getElementById("jackpotSound");
 
-let players={}, scores={}, visuals={}, images={};
+let players={}, scores={}, visuals={}, images={}, winPoints=50;
 
 /* AVATARS */
 for(let i=1;i<=10;i++){
@@ -133,30 +102,25 @@ for(let i=1;i<=10;i++){
 /* DRAW */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
   for(let i=0;i<100;i++){
     const n=i+1;
     const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
+    const c=r%2===0?i%10:9-i%10;
     const x=c*CELL,y=(9-r)*CELL;
-
     ctx.fillStyle=n%2?COLOR_A:COLOR_B;
     ctx.fillRect(x,y,CELL,CELL);
     ctx.strokeStyle="#ffffff44";
     ctx.strokeRect(x,y,CELL,CELL);
-
     ctx.fillStyle="rgba(0,0,0,.35)";
     ctx.font="bold 18px Arial";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText(n,x+CELL/2,y+CELL/2);
   }
-
   Object.values(visuals).forEach(p=>{
     if(p.pos<=0) return;
     const i=p.pos-1;
     const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
+    const c=r%2===0?i%10:9-i%10;
     const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
     const img=images[p.pawn];
     if(img?.complete){
@@ -166,27 +130,46 @@ function draw(){
   });
 }
 
-/* SCORES */
+/* STEP ANIMATION */
+function animateMove(id,newPos){
+  const p=visuals[id];
+  const start=p.pos;
+  let cur=start;
+  const dir=newPos>start?1:-1;
+
+  const timer=setInterval(()=>{
+    cur+=dir;
+    p.pos=cur;
+    stepSound.currentTime=0;
+    stepSound.play();
+    draw();
+    if(cur===newPos) clearInterval(timer);
+  },400);
+}
+
+/* SCOREBOARD */
 function updateScores(){
   const box=document.getElementById("scores");
   box.innerHTML="";
-  Object.keys(scores).forEach(id=>{
-    const p=players[id];
-    if(!p) return;
-    const row=document.createElement("div");
-    row.className="score";
-    row.innerHTML=`
-      <img src="${images[p.pawn].src}">
-      <div class="points">${scores[id]}</div>
-    `;
-    box.appendChild(row);
-  });
+  Object.keys(scores)
+    .map(id=>({id,score:scores[id]}))
+    .sort((a,b)=>b.score-a.score)
+    .forEach((item,i)=>{
+      const p=players[item.id];
+      if(!p) return;
+      const d=document.createElement("div");
+      d.className="score"+(i===0?" leader":"");
+      d.innerHTML=`
+        <img src="${images[p.pawn].src}">
+        <div class="points">${item.score}/${winPoints}</div>`;
+      box.appendChild(d);
+    });
 }
 
 /* OVERLAY */
 const overlay=document.getElementById("overlay");
-function showOverlay(text,ms=3000){
-  overlay.innerHTML=text;
+function showOverlay(txt,ms=5000){
+  overlay.innerHTML=txt;
   overlay.classList.add("show");
   setTimeout(()=>overlay.classList.remove("show"),ms);
 }
@@ -202,47 +185,45 @@ ws.onmessage=e=>{
   if(type==="INIT"||type==="UPDATE"){
     players=data.players;
     scores=data.scores||scores;
+    winPoints=data.winPoints||winPoints;
     Object.keys(players).forEach(id=>{
       visuals[id]??={pawn:players[id].pawn,pos:players[id].pos};
-      visuals[id].pos=players[id].pos;
+      if(players[id].pos!==visuals[id].pos){
+        animateMove(id,players[id].pos);
+      }
     });
     updateScores();
     draw();
   }
 
   if(type==="BONUS"){
-    const txt =
-      data.bonus>=8 ? `🎉 JACKPOT +${data.bonus}` :
-      data.bonus>0 ? `➕ Κέρδισες ${data.bonus} πόντους` :
-                     `❌ Έχασες ${Math.abs(data.bonus)} πόντους`;
-    showOverlay(txt,3000);
+    if(data.bonus>=8) jackpotSound.play();
+    showOverlay(
+      data.bonus>=8?`🎉 JACKPOT +${data.bonus}`:
+      data.bonus>0?`➕ +${data.bonus} πόντοι`:
+                   `❌ ${data.bonus} πόντοι`
+    );
     scores=data.scores;
     updateScores();
   }
 
-  if(type==="ROUND_HISTORY"){
-    const lines=data.history.map(h=>`${h.bonus>0?'+':''}${h.bonus}`).join("<br>");
-    showOverlay(`📜 Bonus Γύρου<br>${lines}`,4000);
-  }
-
   if(type==="ROUND_COUNTDOWN"){
-    if(data.seconds>0){
-      showOverlay(`🔄 Επόμενος γύρος σε ${data.seconds}`,1000);
-    }
+    if(data.seconds>0) showOverlay(`🔄 Επόμενος γύρος σε ${data.seconds}`,1000);
   }
 
   if(type==="TOURNAMENT_WINNER"){
-    showOverlay("🏆 ΤΕΛΙΚΟΣ ΝΙΚΗΤΗΣ!",6000);
+    showOverlay("🏆 ΤΕΛΙΚΟΣ ΝΙΚΗΤΗΣ!",7000);
   }
 };
 
-/* BUTTONS */
 startBtn.onclick=()=>ws.send(JSON.stringify({type:"START"}));
 resetBtn.onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
+targetSelect.onchange=()=>ws.send(JSON.stringify({
+  type:"SET_TARGET", data:{points:+targetSelect.value}
+}));
 
-qrImg.src=
-  "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+
-  encodeURIComponent(location.origin+"/phone");
+qrImg.src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="
+ +encodeURIComponent(location.origin+"/phone");
 
 draw();
 </script>
