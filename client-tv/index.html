@@ -47,8 +47,8 @@ button{
   border-radius:14px;
 }
 
-/* MESSAGE & WINNER */
-#message, #winner{
+/* OVERLAYS */
+.overlay{
   position:fixed;
   inset:0;
   display:flex;
@@ -59,47 +59,27 @@ button{
   transition:opacity .4s;
 }
 
-#messageBox{
+.box{
   background:#FFD166;
   color:#000;
-  padding:36px 56px;
-  font-size:32px;
-  font-weight:bold;
-  border-radius:36px;
-}
-
-#winnerBox{
-  background:#FFD166;
-  padding:50px 70px;
+  padding:40px 60px;
   border-radius:40px;
   text-align:center;
   box-shadow:0 30px 60px rgba(0,0,0,.5);
 }
 
-#winnerBox h1{
-  margin:0 0 20px;
-  font-size:48px;
+.box h1{ margin:0 0 20px; font-size:42px; }
+
+.order{
+  display:flex;
+  gap:20px;
+  justify-content:center;
 }
 
-#winnerBox img{
-  width:200px;
-  height:200px;
+.order img{
+  width:90px;
+  height:90px;
   object-fit:contain;
-}
-
-/* CONFETTI */
-.confetti{
-  position:fixed;
-  width:10px;
-  height:10px;
-  top:-10px;
-  animation:fall 3s linear forwards;
-}
-@keyframes fall{
-  to{
-    transform:translateY(110vh) rotate(720deg);
-    opacity:0;
-  }
 }
 </style>
 </head>
@@ -116,12 +96,19 @@ button{
   </div>
 </div>
 
-<div id="message"><div id="messageBox"></div></div>
+<!-- ORDER -->
+<div id="orderOverlay" class="overlay">
+  <div class="box">
+    <h1>📜 Σειρά Παικτών</h1>
+    <div class="order" id="orderList"></div>
+  </div>
+</div>
 
-<div id="winner">
-  <div id="winnerBox">
-    <h1>🏆 ΝΙΚΗΤΗΣ!</h1>
-    <img id="winnerImg">
+<!-- TURN -->
+<div id="turnOverlay" class="overlay">
+  <div class="box">
+    <h1>🎯 Παίζει</h1>
+    <img id="turnImg" width="140">
   </div>
 </div>
 
@@ -131,34 +118,9 @@ const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
 const CELL=canvas.width/10;
 
-/* ================= AUDIO ================= */
-const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-function stepSound(){
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type="square"; o.frequency.value=220; g.gain.value=0.05;
-  o.connect(g).connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+0.05);
-}
-function winSound(){
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type="triangle";
-  o.frequency.setValueAtTime(440,audioCtx.currentTime);
-  o.frequency.exponentialRampToValueAtTime(880,audioCtx.currentTime+0.6);
-  g.gain.value=0.1;
-  o.connect(g).connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+0.6);
-}
-
-/* ================= ACTIVITIES ================= */
-const ACTIVITIES={
-  star:{symbol:"⭐",color:"#FFD166",actions:[{t:"Πήγαινε 2 μπροστά",m:2},{t:"Πήγαινε 3 μπροστά",m:3}]},
-  circle:{symbol:"●",color:"#06D6A0",actions:[{t:"Πήγαινε 2 πίσω",m:-2},{t:"Πήγαινε 3 πίσω",m:-3}]},
-  square:{symbol:"■",color:"#EF476F",actions:[{t:"Αντάλλαξε θέση με τον 3ο παίκτη",s:2}]}
-};
-
 /* ================= STATE ================= */
-let players={},visualPlayers={},images={},activityCells={},activeIntervals=[];
-let gameEnded=false;
+let players={},visualPlayers={},images={},activityCells={};
+let currentTurn=null;
 
 /* ================= LOAD AVATARS ================= */
 for(let i=1;i<=10;i++){
@@ -167,7 +129,13 @@ for(let i=1;i<=10;i++){
   images[`avatar_${i}`]=img;
 }
 
-/* ================= ACTIVITIES GEN ================= */
+/* ================= ACTIVITIES ================= */
+const ACTIVITIES={
+  star:{symbol:"⭐",color:"#FFD166"},
+  circle:{symbol:"●",color:"#06D6A0"},
+  square:{symbol:"■",color:"#EF476F"}
+};
+
 function generateActivities(){
   activityCells={};
   while(Object.keys(activityCells).length<25){
@@ -179,103 +147,34 @@ function generateActivities(){
 
 /* ================= WS ================= */
 const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
+
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
+
+  if(type==="ORDER"){
+    showOrder(data.order);
+  }
+
   if(type==="INIT"||type==="UPDATE"){
     players=data.players;
+    if(data.turn && data.turn!==currentTurn){
+      currentTurn=data.turn;
+      showTurn(currentTurn);
+    }
     syncVisuals();
   }
 };
 
-/* ================= SYNC ================= */
+/* ================= VISUALS ================= */
 function syncVisuals(){
-  if(gameEnded) return;
-
   Object.values(players).forEach(p=>{
-    if(p.pos>=100 && !gameEnded){
-      showWinner(p.pawn);
-      return;
-    }
+    if(p.pos===0) return; // ⬅️ εκτός ταμπλό
     if(!visualPlayers[p.pawn]){
       visualPlayers[p.pawn]={pos:p.pos};
     }
-    if(p.pos!==visualPlayers[p.pawn].pos){
-      animateMove(p.pawn,p.pos);
-    }
+    visualPlayers[p.pawn].pos=p.pos;
   });
   draw();
-}
-
-/* ================= ANIMATE ================= */
-function animateMove(pawn,target){
-  clearIntervals();
-  const v=visualPlayers[pawn];
-  const dir=Math.sign(target-v.pos);
-
-  const int=setInterval(()=>{
-    if(v.pos===target){
-      clearInterval(int);
-      applyActivity(pawn);
-      return;
-    }
-    v.pos+=dir;
-    stepSound();
-    draw();
-  },180);
-
-  activeIntervals.push(int);
-}
-
-/* ================= ACTIVITY ================= */
-function applyActivity(pawn){
-  if(gameEnded) return;
-  const v=visualPlayers[pawn];
-  const type=activityCells[v.pos];
-  if(!type) return;
-
-  const act=ACTIVITIES[type];
-  const a=act.actions[Math.floor(Math.random()*act.actions.length)];
-  showMessage(a.t);
-
-  if(a.m) v.pos=Math.max(1,Math.min(100,v.pos+a.m));
-  if(a.s!==undefined){
-    const list=Object.values(visualPlayers);
-    if(list[a.s]){
-      const tmp=v.pos;
-      v.pos=list[a.s].pos;
-      list[a.s].pos=tmp;
-    }
-  }
-  draw();
-}
-
-/* ================= WINNER ================= */
-function showWinner(pawn){
-  gameEnded=true;
-  clearIntervals();
-  winSound();
-  launchConfetti();
-  document.getElementById("winnerImg").src=images[pawn].src;
-  document.getElementById("winner").style.opacity=1;
-}
-
-/* ================= CONFETTI ================= */
-function launchConfetti(){
-  for(let i=0;i<80;i++){
-    const c=document.createElement("div");
-    c.className="confetti";
-    c.style.left=Math.random()*100+"vw";
-    c.style.background=`hsl(${Math.random()*360},100%,50%)`;
-    c.style.animationDuration=2+Math.random()*2+"s";
-    document.body.appendChild(c);
-    setTimeout(()=>c.remove(),4000);
-  }
-}
-
-/* ================= CLEANUP ================= */
-function clearIntervals(){
-  activeIntervals.forEach(i=>clearInterval(i));
-  activeIntervals=[];
 }
 
 /* ================= DRAW ================= */
@@ -304,7 +203,6 @@ function draw(){
     }
   }
 
-  /* ===== AVATARS (NO CIRCLE – SOLUTION 1) ===== */
   Object.entries(visualPlayers).forEach(([pawn,p])=>{
     const i=p.pos-1;
     const r=Math.floor(i/10);
@@ -313,41 +211,48 @@ function draw(){
 
     const img=images[pawn];
     if(img && img.complete){
-      const size = CELL * 0.65;
-      ctx.drawImage(
-        img,
-        cx - size/2,
-        cy - size/2,
-        size,
-        size
-      );
+      const size=CELL*0.65;
+      ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
     }
   });
 }
 
-/* ================= MESSAGE ================= */
-const msg=document.getElementById("message"),box=document.getElementById("messageBox");
-function showMessage(t){
-  box.textContent=t;
-  msg.style.opacity=1;
-  setTimeout(()=>msg.style.opacity=0,2500);
+/* ================= OVERLAYS ================= */
+function showOrder(order){
+  const list=document.getElementById("orderList");
+  list.innerHTML="";
+  order.forEach(id=>{
+    const p=players[id];
+    if(!p) return;
+    const img=document.createElement("img");
+    img.src=images[p.pawn].src;
+    list.appendChild(img);
+  });
+  const o=document.getElementById("orderOverlay");
+  o.style.opacity=1;
+  setTimeout(()=>o.style.opacity=0,3500);
+}
+
+function showTurn(id){
+  const p=players[id];
+  if(!p) return;
+  const img=document.getElementById("turnImg");
+  img.src=images[p.pawn].src;
+  const o=document.getElementById("turnOverlay");
+  o.style.opacity=1;
+  setTimeout(()=>o.style.opacity=0,2000);
 }
 
 /* ================= UI ================= */
 document.getElementById("startBtn").onclick=()=>{
-  gameEnded=false;
-  document.getElementById("winner").style.opacity=0;
   generateActivities();
   ws.send(JSON.stringify({type:"START"}));
 };
 
 document.getElementById("resetBtn").onclick=()=>{
-  gameEnded=false;
-  clearIntervals();
   visualPlayers={};
   players={};
   generateActivities();
-  document.getElementById("winner").style.opacity=0;
   ws.send(JSON.stringify({type:"RESET"}));
   draw();
 };
