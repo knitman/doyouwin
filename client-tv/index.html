@@ -9,12 +9,11 @@ body{
   margin:0;
   background:#1b1b1b;
   color:#fff;
-  font-family:Arial, sans-serif;
+  font-family:Arial,sans-serif;
 }
 #root{
   display:grid;
   grid-template-columns:220px auto 260px;
-  align-items:center;
   height:100vh;
   gap:24px;
   padding:24px;
@@ -24,7 +23,7 @@ body{
 #controls{
   display:flex;
   flex-direction:column;
-  gap:20px;
+  gap:18px;
   align-items:center;
 }
 button{
@@ -77,10 +76,11 @@ canvas{
 #overlay{
   position:fixed;
   inset:0;
-  background:rgba(0,0,0,.6);
+  background:rgba(0,0,0,.65);
   display:flex;
   justify-content:center;
   align-items:center;
+  text-align:center;
   font-size:48px;
   font-weight:bold;
   opacity:0;
@@ -99,9 +99,7 @@ canvas{
   <div id="controls">
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
-    <div id="qr">
-      <img id="qrImg" width="160">
-    </div>
+    <div id="qr"><img id="qrImg" width="160"></div>
   </div>
 
   <!-- CENTER -->
@@ -118,16 +116,14 @@ canvas{
 <div id="overlay"></div>
 
 <script>
-/* ===== CANVAS ===== */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
 const CELL=canvas.width/10;
 const COLOR_A="#3A7F80", COLOR_B="#2F6364";
 
-/* ===== STATE ===== */
 let players={}, scores={}, visuals={}, images={};
 
-/* LOAD AVATARS */
+/* AVATARS */
 for(let i=1;i<=10;i++){
   const img=new Image();
   img.src=`/assets/pawns/avatar_${i}.png`;
@@ -189,15 +185,15 @@ function updateScores(){
 
 /* OVERLAY */
 const overlay=document.getElementById("overlay");
-function showOverlay(text,ms=3500){
-  overlay.textContent=text;
+function showOverlay(text,ms=3000){
+  overlay.innerHTML=text;
   overlay.classList.add("show");
   setTimeout(()=>overlay.classList.remove("show"),ms);
 }
 
 /* WS */
 const ws=new WebSocket(
-  (location.protocol==="https:"?"wss://":"ws://")+location.host
+ (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
 ws.onmessage=e=>{
@@ -206,20 +202,33 @@ ws.onmessage=e=>{
   if(type==="INIT"||type==="UPDATE"){
     players=data.players;
     scores=data.scores||scores;
-
     Object.keys(players).forEach(id=>{
-      visuals[id]??={ pawn:players[id].pawn, pos:players[id].pos };
+      visuals[id]??={pawn:players[id].pawn,pos:players[id].pos};
       visuals[id].pos=players[id].pos;
     });
-
     updateScores();
     draw();
   }
 
-  if(type==="ROUND_RESULT"){
-    showOverlay("🏁 Τέλος γύρου!");
+  if(type==="BONUS"){
+    const txt =
+      data.bonus>=8 ? `🎉 JACKPOT +${data.bonus}` :
+      data.bonus>0 ? `➕ Κέρδισες ${data.bonus} πόντους` :
+                     `❌ Έχασες ${Math.abs(data.bonus)} πόντους`;
+    showOverlay(txt,3000);
     scores=data.scores;
     updateScores();
+  }
+
+  if(type==="ROUND_HISTORY"){
+    const lines=data.history.map(h=>`${h.bonus>0?'+':''}${h.bonus}`).join("<br>");
+    showOverlay(`📜 Bonus Γύρου<br>${lines}`,4000);
+  }
+
+  if(type==="ROUND_COUNTDOWN"){
+    if(data.seconds>0){
+      showOverlay(`🔄 Επόμενος γύρος σε ${data.seconds}`,1000);
+    }
   }
 
   if(type==="TOURNAMENT_WINNER"){
@@ -228,14 +237,10 @@ ws.onmessage=e=>{
 };
 
 /* BUTTONS */
-document.getElementById("startBtn").onclick=()=>{
-  ws.send(JSON.stringify({type:"START"}));
-};
-document.getElementById("resetBtn").onclick=()=>{
-  ws.send(JSON.stringify({type:"RESET"}));
-};
+startBtn.onclick=()=>ws.send(JSON.stringify({type:"START"}));
+resetBtn.onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
 
-document.getElementById("qrImg").src=
+qrImg.src=
   "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+
   encodeURIComponent(location.origin+"/phone");
 
