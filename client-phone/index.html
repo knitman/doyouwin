@@ -2,164 +2,122 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Party Board – Κινητό</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Party Board – Phone</title>
 
 <style>
 body{
   margin:0;
-  height:100vh;
   background:#2F6364;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  font-family:Arial, sans-serif;
+  color:#fff;
+  font-family:Arial,sans-serif;
 }
-
 #app{
-  width:100%;
   max-width:420px;
-  padding:24px;
+  margin:auto;
+  padding:20px;
   text-align:center;
-  color:white;
 }
-
-/* AVATARS */
 #avatars{
   display:grid;
   grid-template-columns:repeat(5,1fr);
-  gap:12px;
-  margin-bottom:24px;
+  gap:10px;
 }
-
 .avatar{
-  background:white;
-  border-radius:16px;
-  padding:8px;
+  background:#fff;
+  border-radius:14px;
+  padding:6px;
   cursor:pointer;
-  border:4px solid transparent;
 }
+.avatar img{ width:100%; height:60px; object-fit:contain; }
+.avatar.sel{ outline:4px solid #FFD166; }
 
-.avatar img{
-  width:100%;
-  height:60px;
-  object-fit:contain;
-}
-
-.avatar.selected{
-  border-color:#FFD166;
-}
-
-/* BUTTONS */
 button{
   width:100%;
-  border:none;
-  border-radius:24px;
-  font-weight:bold;
-  cursor:pointer;
-}
-
-/* READY */
-#readyBtn{
   padding:18px;
-  font-size:22px;
+  margin-top:20px;
+  font-size:26px;
+  border:none;
+  border-radius:22px;
   background:#FFD166;
-  color:black;
-  margin-bottom:24px;
+  font-weight:bold;
 }
-
-/* BIG DICE */
-#diceBtn{
-  display:none;
-  height:140px;
-  font-size:40px;
-  background:#EF476F;
-  color:white;
-  box-shadow:0 10px 20px rgba(0,0,0,.3);
-}
-
-/* INFO */
-#info{
-  margin-top:16px;
-  font-size:18px;
-  opacity:.9;
-}
+#dice{ display:none; background:#EF476F; color:#fff; }
+#info{ margin-top:14px; font-size:18px; }
 </style>
 </head>
 
 <body>
 
 <div id="app">
-
-  <!-- AVATAR PICK -->
+  <h2>Διάλεξε πιόνι</h2>
   <div id="avatars"></div>
 
-  <!-- READY -->
-  <button id="readyBtn" disabled>ΕΙΜΑΙ ΕΤΟΙΜΟΣ</button>
-
-  <!-- BIG DICE -->
-  <button id="diceBtn">🎲 ΡΙΞΕ ΖΑΡΙ</button>
+  <button id="ready" disabled>ΕΤΟΙΜΟΣ</button>
+  <button id="dice">🎲 ΡΙΞΕ ΖΑΡΙ</button>
 
   <div id="info"></div>
-
 </div>
 
 <script>
-const ws = new WebSocket(
-  (location.protocol==="https:"?"wss://":"ws://")+location.host
+const ws=new WebSocket(
+ (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
-let myPawn=null;
-let myId=null;
-let myTurn=false;
+let myId=null,myPawn=null,myTurn=false,myScore=0;
 
-/* ===== AVATARS ===== */
-const avatars=document.getElementById("avatars");
+/* AVATARS */
+const box=document.getElementById("avatars");
 for(let i=1;i<=10;i++){
   const d=document.createElement("div");
   d.className="avatar";
   d.innerHTML=`<img src="/assets/pawns/avatar_${i}.png">`;
   d.onclick=()=>{
-    document.querySelectorAll(".avatar").forEach(a=>a.classList.remove("selected"));
-    d.classList.add("selected");
+    document.querySelectorAll(".avatar").forEach(a=>a.classList.remove("sel"));
+    d.classList.add("sel");
     myPawn=`avatar_${i}`;
-    readyBtn.disabled=false;
+    ready.disabled=false;
   };
-  avatars.appendChild(d);
+  box.appendChild(d);
 }
 
-/* ===== READY ===== */
-const readyBtn=document.getElementById("readyBtn");
-readyBtn.onclick=()=>{
+/* READY */
+ready.onclick=()=>{
   ws.send(JSON.stringify({type:"JOIN",data:{pawn:myPawn}}));
-  readyBtn.style.display="none";
-  avatars.style.display="none";
-  document.getElementById("info").textContent="Περίμενε τη σειρά σου…";
+  ready.style.display="none";
+  box.style.display="none";
+  info.textContent="Περιμένεις...";
 };
 
-/* ===== DICE ===== */
-const diceBtn=document.getElementById("diceBtn");
-diceBtn.onclick=()=>{
+/* DICE */
+dice.onclick=()=>{
   if(!myTurn) return;
   ws.send(JSON.stringify({type:"ROLL"}));
   myTurn=false;
-  diceBtn.style.display="none";
-  document.getElementById("info").textContent="Περιμένεις τους άλλους…";
+  dice.style.display="none";
+  info.textContent="Περιμένεις...";
 };
 
-/* ===== WS ===== */
+/* WS */
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
 
-  if(type==="INIT"){
-    myId=data.id;
-  }
+  if(type==="INIT") myId=data.id;
 
   if(type==="UPDATE"){
+    myScore=data.scores?.[myId]??myScore;
     if(data.turn===myId){
       myTurn=true;
-      diceBtn.style.display="block";
-      document.getElementById("info").textContent="🎯 Η σειρά σου!";
+      dice.style.display="block";
+      info.textContent=`Η σειρά σου • Πόντοι: ${myScore}`;
+    }
+  }
+
+  if(type==="TOURNAMENT_WINNER"){
+    if(data.id===myId){
+      info.textContent="🏆 ΚΕΡΔΙΣΕΣ ΤΟ ΤΟΥΡΝΟΥΑ!";
+    }else{
+      info.textContent="😅 Τέλος τουρνουά";
     }
   }
 };
