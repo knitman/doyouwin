@@ -1,9 +1,0 @@
-{
-  "name": "party-board-server",
-  "version": "1.0.1",
-  "main": "server.js",
-  "type": "commonjs",
-  "dependencies": {
-    "ws": "^8.16.0"
-  }
-}
