@@ -14,22 +14,18 @@ body{
   align-items:center;
   font-family:Arial, sans-serif;
 }
-
 #layout{
   display:grid;
   grid-template-columns:auto auto;
   gap:24px;
 }
-
 canvas{ background:#2F6364; }
-
 #sideUI{
   display:flex;
   flex-direction:column;
   gap:16px;
   align-items:center;
 }
-
 button{
   width:160px;
   padding:14px;
@@ -40,14 +36,13 @@ button{
   font-weight:bold;
   cursor:pointer;
 }
-
 #qr{
   background:white;
   padding:12px;
   border-radius:14px;
 }
 
-/* ===== CENTER COMMAND ===== */
+/* ===== COMMAND OVERLAY (ANIMATED) ===== */
 #commandOverlay{
   position:fixed;
   inset:0;
@@ -56,18 +51,29 @@ button{
   align-items:center;
   pointer-events:none;
   opacity:0;
-  transition:opacity .3s;
 }
-
 #commandBox{
   background:#FFD166;
   color:#000;
-  padding:40px 60px;
-  border-radius:50px;
-  font-size:38px;
+  padding:42px 64px;
+  border-radius:56px;
+  font-size:40px;
   font-weight:bold;
   text-align:center;
   box-shadow:0 30px 60px rgba(0,0,0,.5);
+  transform:scale(.7);
+  animation:none;
+}
+@keyframes popIn{
+  0%{ transform:scale(.6); }
+  60%{ transform:scale(1.08); }
+  100%{ transform:scale(1); }
+}
+
+/* ===== HIGHLIGHT ===== */
+.glow{
+  filter: drop-shadow(0 0 10px rgba(255,214,102,.9))
+          drop-shadow(0 0 18px rgba(255,214,102,.7));
 }
 </style>
 </head>
@@ -76,7 +82,6 @@ button{
 
 <div id="layout">
   <canvas id="board" width="800" height="800"></canvas>
-
   <div id="sideUI">
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
@@ -90,60 +95,70 @@ button{
 
 <script>
 /* ================= CANVAS ================= */
-const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
-const CELL = canvas.width / 10;
+const canvas=document.getElementById("board");
+const ctx=canvas.getContext("2d");
+const CELL=canvas.width/10;
 
 /* ================= COLORS ================= */
-const COLOR_A = "#3A7F80";
-const COLOR_B = "#2F6364";
+const COLOR_A="#3A7F80";
+const COLOR_B="#2F6364";
+
+/* ================= AUDIO ================= */
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+function commandSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type="triangle";
+  o.frequency.setValueAtTime(520,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(760,audioCtx.currentTime+.25);
+  g.gain.value=.12;
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+.25);
+}
 
 /* ================= STATE ================= */
-let players = {};
-let visualPlayers = {};
-let images = {};
-let activityCells = {};
+let players={}, visualPlayers={}, images={}, activityCells={};
+let highlightedPawn=null;
+let highlightUntil=0;
 
 /* ================= LOAD AVATARS ================= */
 for(let i=1;i<=10;i++){
-  const img = new Image();
-  img.src = `/assets/pawns/avatar_${i}.png`;
-  images[`avatar_${i}`] = img;
+  const img=new Image();
+  img.src=`/assets/pawns/avatar_${i}.png`;
+  images[`avatar_${i}`]=img;
 }
 
 /* ================= ACTIVITIES ================= */
-const ACTIVITIES = {
-  move2: [
-    { text:"➡️ Πήγαινε 2 μπροστά", move:2 },
-    { text:"⬅️ Πήγαινε 2 πίσω", move:-2 }
+const ACTIVITIES={
+  move2:[
+    {text:"➡️ Πήγαινε 2 μπροστά",move:2},
+    {text:"⬅️ Πήγαινε 2 πίσω",move:-2}
   ],
-  move3: [
-    { text:"➡️ Πήγαινε 3 μπροστά", move:3 },
-    { text:"⬅️ Πήγαινε 3 πίσω", move:-3 }
+  move3:[
+    {text:"➡️ Πήγαινε 3 μπροστά",move:3},
+    {text:"⬅️ Πήγαινε 3 πίσω",move:-3}
   ],
-  swap: [
-    { text:"🔄 Αντάλλαξε θέση με άλλον παίκτη", swap:true }
+  swap:[
+    {text:"🔄 Αντάλλαξε θέση με άλλον παίκτη",swap:true}
   ]
 };
 
 function generateActivities(){
-  activityCells = {};
-  while(Object.keys(activityCells).length < 25){
-    const n = Math.floor(Math.random()*98)+2;
-    const keys = Object.keys(ACTIVITIES);
-    activityCells[n] = keys[Math.floor(Math.random()*keys.length)];
+  activityCells={};
+  while(Object.keys(activityCells).length<25){
+    const n=Math.floor(Math.random()*98)+2;
+    const k=Object.keys(ACTIVITIES);
+    activityCells[n]=k[Math.floor(Math.random()*k.length)];
   }
 }
 
 /* ================= WS ================= */
-const ws = new WebSocket(
+const ws=new WebSocket(
   (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
-
-ws.onmessage = e => {
-  const { type, data } = JSON.parse(e.data);
-  if(type==="INIT" || type==="UPDATE"){
-    players = data.players;
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
+  if(type==="INIT"||type==="UPDATE"){
+    players=data.players;
     syncVisuals();
   }
 };
@@ -151,56 +166,66 @@ ws.onmessage = e => {
 /* ================= SYNC ================= */
 function syncVisuals(){
   Object.values(players).forEach(p=>{
-    if(p.pos === 0) return;
+    if(p.pos===0) return;
     if(!visualPlayers[p.pawn]){
-      visualPlayers[p.pawn] = { pos:p.pos };
+      visualPlayers[p.pawn]={pos:p.pos,lastPos:null};
     }
-    visualPlayers[p.pawn].pos = p.pos;
-    checkActivity(p.pawn);
+    const v=visualPlayers[p.pawn];
+    if(v.pos!==p.pos){
+      v.lastPos=v.pos;
+      v.pos=p.pos;
+      handleLanding(p.pawn,v);
+    }
   });
   draw();
 }
 
-/* ================= ACTIVITY ================= */
-function checkActivity(pawn){
-  const p = visualPlayers[pawn];
-  const type = activityCells[p.pos];
+/* ================= LANDING LOGIC ================= */
+function handleLanding(pawn,v){
+  const type=activityCells[v.pos];
   if(!type) return;
 
-  const action = ACTIVITIES[type][
+  const action=ACTIVITIES[type][
     Math.floor(Math.random()*ACTIVITIES[type].length)
   ];
 
   showCommand(action.text);
+  commandSound();
+  highlightPawn(pawn,1200);
 
   if(action.move){
-    p.pos = Math.max(1, Math.min(100, p.pos + action.move));
+    v.pos=Math.max(1,Math.min(100,v.pos+action.move));
   }
-
   if(action.swap){
-    const others = Object.values(visualPlayers).filter(v => v !== p);
-    if(others.length > 0){
-      const target = others[Math.floor(Math.random()*others.length)];
-      const temp = p.pos;
-      p.pos = target.pos;
-      target.pos = temp;
+    const others=Object.entries(visualPlayers)
+      .filter(([k,_])=>k!==pawn)
+      .map(([_,o])=>o);
+    if(others.length){
+      const t=others[Math.floor(Math.random()*others.length)];
+      [v.pos,t.pos]=[t.pos,v.pos];
     }
   }
+}
+
+/* ================= HIGHLIGHT ================= */
+function highlightPawn(pawn,ms){
+  highlightedPawn=pawn;
+  highlightUntil=Date.now()+ms;
 }
 
 /* ================= DRAW ================= */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
+  // board
   for(let i=0;i<100;i++){
     const n=i+1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
     const x=c*CELL,y=(9-r)*CELL;
 
-    ctx.fillStyle=(n%2===1)?COLOR_A:COLOR_B;
+    ctx.fillStyle=(n%2)?COLOR_A:COLOR_B;
     ctx.fillRect(x,y,CELL,CELL);
-
     ctx.strokeStyle="#ffffff44";
     ctx.strokeRect(x,y,CELL,CELL);
 
@@ -211,27 +236,41 @@ function draw(){
     ctx.fillText(n,x+CELL/2,y+CELL/2);
   }
 
+  // pawns
   Object.entries(visualPlayers).forEach(([pawn,p])=>{
     const i=p.pos-1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
-    const cx=c*CELL+CELL/2;
-    const cy=(9-r)*CELL+CELL/2;
+    const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
 
     const img=images[pawn];
     if(img && img.complete){
       const size=CELL*0.65;
-      ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
+
+      // glow highlight
+      if(pawn===highlightedPawn && Date.now()<highlightUntil){
+        ctx.save();
+        ctx.shadowColor="rgba(255,214,102,.9)";
+        ctx.shadowBlur=18;
+        ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
+        ctx.restore();
+      }else{
+        ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
+      }
     }
   });
+
+  requestAnimationFrame(draw);
 }
 
-/* ================= COMMAND ================= */
+/* ================= COMMAND UI ================= */
 const overlay=document.getElementById("commandOverlay");
 const box=document.getElementById("commandBox");
-
-function showCommand(text){
-  box.textContent=text;
+function showCommand(t){
+  box.textContent=t;
+  box.style.animation="none";
+  void box.offsetWidth; // restart animation
+  box.style.animation="popIn .35s ease-out forwards";
   overlay.style.opacity=1;
   setTimeout(()=>overlay.style.opacity=0,2500);
 }
@@ -241,13 +280,12 @@ document.getElementById("startBtn").onclick=()=>{
   generateActivities();
   ws.send(JSON.stringify({type:"START"}));
 };
-
 document.getElementById("resetBtn").onclick=()=>{
   visualPlayers={};
   players={};
+  highlightedPawn=null;
   generateActivities();
   ws.send(JSON.stringify({type:"RESET"}));
-  draw();
 };
 
 document.getElementById("qrImg").src=
