@@ -156,7 +156,6 @@ const jackpotSound = document.getElementById("jackpotSound");
 const leaderSound = document.getElementById("leaderSound");
 const bgMusic = document.getElementById("bgMusic");
 bgMusic.volume = 0.25;
-bgMusic.play().catch(()=>{});
 
 /* ===== STATE ===== */
 let players = {};
@@ -211,11 +210,11 @@ function draw(){
 }
 
 /* STEP ANIMATION */
-function animateMove(id,newPos,isJackpot=false){
+function animateMove(id,newPos){
   const p=visuals[id];
   let cur=p.pos;
   const step=newPos>cur?1:-1;
-  const delay=isJackpot?650:350;
+  const delay=350;
 
   const timer=setInterval(()=>{
     cur+=step;
@@ -310,8 +309,11 @@ ws.onmessage=e=>{
 };
 
 /* CONTROLS */
-document.getElementById("startBtn").onclick =
-  ()=>ws.send(JSON.stringify({type:"START"}));
+document.getElementById("startBtn").onclick = () => {
+  bgMusic.currentTime = 0;
+  bgMusic.play().catch(()=>{});
+  ws.send(JSON.stringify({type:"START"}));
+};
 document.getElementById("resetBtn").onclick =
   ()=>ws.send(JSON.stringify({type:"RESET"}));
 document.getElementById("targetSelect").onchange = e =>
