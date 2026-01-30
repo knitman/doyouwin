@@ -42,7 +42,7 @@ button{
   border-radius:14px;
 }
 
-/* ===== COMMAND OVERLAY (ANIMATED) ===== */
+/* COMMAND OVERLAY */
 #commandOverlay{
   position:fixed;
   inset:0;
@@ -57,23 +57,10 @@ button{
   color:#000;
   padding:42px 64px;
   border-radius:56px;
-  font-size:40px;
+  font-size:38px;
   font-weight:bold;
   text-align:center;
   box-shadow:0 30px 60px rgba(0,0,0,.5);
-  transform:scale(.7);
-  animation:none;
-}
-@keyframes popIn{
-  0%{ transform:scale(.6); }
-  60%{ transform:scale(1.08); }
-  100%{ transform:scale(1); }
-}
-
-/* ===== HIGHLIGHT ===== */
-.glow{
-  filter: drop-shadow(0 0 10px rgba(255,214,102,.9))
-          drop-shadow(0 0 18px rgba(255,214,102,.7));
 }
 </style>
 </head>
@@ -89,53 +76,35 @@ button{
   </div>
 </div>
 
-<div id="commandOverlay">
-  <div id="commandBox"></div>
-</div>
+<div id="commandOverlay"><div id="commandBox"></div></div>
 
 <script>
-/* ================= CANVAS ================= */
+/* ===== CANVAS ===== */
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
 const CELL=canvas.width/10;
+const COLOR_A="#3A7F80", COLOR_B="#2F6364";
 
-/* ================= COLORS ================= */
-const COLOR_A="#3A7F80";
-const COLOR_B="#2F6364";
-
-/* ================= AUDIO ================= */
-const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-function commandSound(){
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type="triangle";
-  o.frequency.setValueAtTime(520,audioCtx.currentTime);
-  o.frequency.exponentialRampToValueAtTime(760,audioCtx.currentTime+.25);
-  g.gain.value=.12;
-  o.connect(g).connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+.25);
-}
-
-/* ================= STATE ================= */
+/* ===== STATE ===== */
 let players={}, visualPlayers={}, images={}, activityCells={};
-let highlightedPawn=null;
-let highlightUntil=0;
+let animating=false;
 
-/* ================= LOAD AVATARS ================= */
+/* ===== LOAD AVATARS ===== */
 for(let i=1;i<=10;i++){
   const img=new Image();
   img.src=`/assets/pawns/avatar_${i}.png`;
   images[`avatar_${i}`]=img;
 }
 
-/* ================= ACTIVITIES ================= */
+/* ===== ACTIVITIES ===== */
 const ACTIVITIES={
   move2:[
-    {text:"➡️ Πήγαινε 2 μπροστά",move:2},
-    {text:"⬅️ Πήγαινε 2 πίσω",move:-2}
+    {text:"➡️ Πήγαινε 2 μπροστά",delta:2},
+    {text:"⬅️ Πήγαινε 2 πίσω",delta:-2}
   ],
   move3:[
-    {text:"➡️ Πήγαινε 3 μπροστά",move:3},
-    {text:"⬅️ Πήγαινε 3 πίσω",move:-3}
+    {text:"➡️ Πήγαινε 3 μπροστά",delta:3},
+    {text:"⬅️ Πήγαινε 3 πίσω",delta:-3}
   ],
   swap:[
     {text:"🔄 Αντάλλαξε θέση με άλλον παίκτη",swap:true}
@@ -151,10 +120,11 @@ function generateActivities(){
   }
 }
 
-/* ================= WS ================= */
+/* ===== WS ===== */
 const ws=new WebSocket(
   (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
+
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
   if(type==="INIT"||type==="UPDATE"){
@@ -163,25 +133,42 @@ ws.onmessage=e=>{
   }
 };
 
-/* ================= SYNC ================= */
+/* ===== SYNC ===== */
 function syncVisuals(){
   Object.values(players).forEach(p=>{
     if(p.pos===0) return;
     if(!visualPlayers[p.pawn]){
-      visualPlayers[p.pawn]={pos:p.pos,lastPos:null};
+      visualPlayers[p.pawn]={pos:p.pos};
     }
-    const v=visualPlayers[p.pawn];
-    if(v.pos!==p.pos){
-      v.lastPos=v.pos;
-      v.pos=p.pos;
-      handleLanding(p.pawn,v);
+    if(p.pos!==visualPlayers[p.pawn].pos){
+      animatePawn(p.pawn,p.pos);
     }
   });
-  draw();
 }
 
-/* ================= LANDING LOGIC ================= */
-function handleLanding(pawn,v){
+/* ===== ANIMATION CORE ===== */
+function animatePawn(pawn,target){
+  if(animating) return;
+  animating=true;
+
+  const v=visualPlayers[pawn];
+  const dir=Math.sign(target-v.pos);
+
+  const step=setInterval(()=>{
+    if(v.pos===target){
+      clearInterval(step);
+      animating=false;
+      handleLanding(pawn);
+      return;
+    }
+    v.pos+=dir;
+    draw();
+  },180);
+}
+
+/* ===== LANDING ===== */
+function handleLanding(pawn){
+  const v=visualPlayers[pawn];
   const type=activityCells[v.pos];
   if(!type) return;
 
@@ -190,34 +177,28 @@ function handleLanding(pawn,v){
   ];
 
   showCommand(action.text);
-  commandSound();
-  highlightPawn(pawn,1200);
 
-  if(action.move){
-    v.pos=Math.max(1,Math.min(100,v.pos+action.move));
-  }
-  if(action.swap){
-    const others=Object.entries(visualPlayers)
-      .filter(([k,_])=>k!==pawn)
-      .map(([_,o])=>o);
-    if(others.length){
-      const t=others[Math.floor(Math.random()*others.length)];
-      [v.pos,t.pos]=[t.pos,v.pos];
+  setTimeout(()=>{
+    if(action.delta){
+      const target=Math.max(1,Math.min(100,v.pos+action.delta));
+      animatePawn(pawn,target);
     }
-  }
+    if(action.swap){
+      const others=Object.entries(visualPlayers)
+        .filter(([k])=>k!==pawn);
+      if(others.length){
+        const [_,t]=others[Math.floor(Math.random()*others.length)];
+        [v.pos,t.pos]=[t.pos,v.pos];
+        draw();
+      }
+    }
+  },300);
 }
 
-/* ================= HIGHLIGHT ================= */
-function highlightPawn(pawn,ms){
-  highlightedPawn=pawn;
-  highlightUntil=Date.now()+ms;
-}
-
-/* ================= DRAW ================= */
+/* ===== DRAW ===== */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // board
   for(let i=0;i<100;i++){
     const n=i+1;
     const r=Math.floor(i/10);
@@ -236,46 +217,29 @@ function draw(){
     ctx.fillText(n,x+CELL/2,y+CELL/2);
   }
 
-  // pawns
   Object.entries(visualPlayers).forEach(([pawn,p])=>{
     const i=p.pos-1;
     const r=Math.floor(i/10);
     const c=r%2===0?i%10:9-(i%10);
     const cx=c*CELL+CELL/2, cy=(9-r)*CELL+CELL/2;
-
     const img=images[pawn];
-    if(img && img.complete){
+    if(img&&img.complete){
       const size=CELL*0.65;
-
-      // glow highlight
-      if(pawn===highlightedPawn && Date.now()<highlightUntil){
-        ctx.save();
-        ctx.shadowColor="rgba(255,214,102,.9)";
-        ctx.shadowBlur=18;
-        ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
-        ctx.restore();
-      }else{
-        ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
-      }
+      ctx.drawImage(img,cx-size/2,cy-size/2,size,size);
     }
   });
-
-  requestAnimationFrame(draw);
 }
 
-/* ================= COMMAND UI ================= */
+/* ===== COMMAND UI ===== */
 const overlay=document.getElementById("commandOverlay");
 const box=document.getElementById("commandBox");
 function showCommand(t){
   box.textContent=t;
-  box.style.animation="none";
-  void box.offsetWidth; // restart animation
-  box.style.animation="popIn .35s ease-out forwards";
   overlay.style.opacity=1;
   setTimeout(()=>overlay.style.opacity=0,2500);
 }
 
-/* ================= UI ================= */
+/* ===== UI ===== */
 document.getElementById("startBtn").onclick=()=>{
   generateActivities();
   ws.send(JSON.stringify({type:"START"}));
@@ -283,16 +247,15 @@ document.getElementById("startBtn").onclick=()=>{
 document.getElementById("resetBtn").onclick=()=>{
   visualPlayers={};
   players={};
-  highlightedPawn=null;
   generateActivities();
   ws.send(JSON.stringify({type:"RESET"}));
+  draw();
 };
 
 document.getElementById("qrImg").src=
   "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+
   encodeURIComponent(location.origin+"/phone");
 
-/* ================= INIT ================= */
 generateActivities();
 draw();
 </script>
