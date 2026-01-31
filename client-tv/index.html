@@ -152,14 +152,14 @@ let images = {};
 let winPoints = 50;
 let lastLeader = null;
 
-/* AVATARS preload (για το board) */
+/* AVATARS preload */
 for(let i=1;i<=10;i++){
   const img = new Image();
   img.src = `/assets/pawns/avatar_${i}.png`;
   images[`avatar_${i}`] = img;
 }
 
-/* DRAW BOARD */
+/* DRAW */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   for(let i=0;i<100;i++){
@@ -208,7 +208,7 @@ function animateMove(id,newPos){
   },STEP_DURATION);
 }
 
-/* SCOREBOARD — ΔΙΑΒΑΖΕΙ ΑΠΟ visuals */
+/* SCOREBOARD — FIXED */
 function updateScores(){
   const box=document.getElementById("scores");
   box.innerHTML="";
@@ -223,7 +223,7 @@ function updateScores(){
   }
 
   ordered.forEach((item,i)=>{
-    const p=visuals[item.id];
+    const p = players[item.id] || visuals[item.id];
     if(!p) return;
 
     const row=document.createElement("div");
