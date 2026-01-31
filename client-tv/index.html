@@ -11,85 +11,47 @@ body{
   color:#fff;
   font-family:Arial, sans-serif;
 }
+
 #root{
   display:grid;
   grid-template-columns:240px auto 280px;
   height:100vh;
-  gap:24px;
-  padding:24px;
 }
-#controls{
+
+/* RIGHT PANEL */
+#rightPanel{
+  padding:10px;
+  border-left:3px solid #333;
   display:flex;
   flex-direction:column;
-  gap:16px;
-  align-items:center;
 }
-button,select{
-  width:190px;
-  padding:14px;
-  font-size:20px;
-  border:none;
-  border-radius:16px;
-}
-button{
-  background:#FFD166;
-  font-weight:bold;
-  cursor:pointer;
-}
-canvas{
-  background:#2F6364;
-  border-radius:16px;
-}
-#scores{
+
+#participants{
+  margin-top:20px;
   display:flex;
   flex-direction:column;
   gap:10px;
-}
-.score{
-  display:flex;
-  justify-content:space-between;
   align-items:center;
-  background:#333;
-  padding:10px 14px;
-  border-radius:14px;
-}
-.score.leader{
-  background:#FFD166;
-  color:#000;
-  font-weight:bold;
-}
-.score img{
-  width:42px;
-  height:42px;
-  object-fit:contain;
-}
-.points{
-  font-size:22px;
-  font-weight:bold;
 }
 
-/* OVERLAY */
-#overlay{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.65);
+.participant{
+  width:70px;
+  height:70px;
+  border-radius:10px;
+  background:#2a2a2a;
   display:flex;
-  justify-content:center;
   align-items:center;
-  text-align:center;
-  font-size:48px;
-  font-weight:bold;
-  opacity:0;
-  pointer-events:none;
-  transition:.3s;
-  z-index:10;
+  justify-content:center;
+  padding:6px;
 }
-#overlay.show{ opacity:1; }
-#overlay img{
-  width:120px;
-  height:120px;
-  object-fit:contain;
-  margin-bottom:20px;
+
+.participant img{
+  width:100%;
+}
+
+/* SCORE */
+#scores{
+  margin-top:10px;
 }
 </style>
 </head>
@@ -98,226 +60,72 @@ canvas{
 
 <div id="root">
 
-  <div id="controls">
-    <select id="targetSelect">
-      <option value="50">50</option>
-      <option value="100">100</option>
-      <option value="150">150</option>
-      <option value="200">200</option>
-    </select>
-
+  <!-- LEFT -->
+  <div style="padding:10px">
+    <h3>Ρυθμίσεις</h3>
     <button id="startBtn">START</button>
     <button id="resetBtn">RESTART</button>
-
     <img id="qrImg" width="160">
   </div>
 
+  <!-- BOARD -->
   <canvas id="board" width="800" height="800"></canvas>
 
-  <div>
+  <!-- RIGHT -->
+  <div id="rightPanel">
     <h2 style="text-align:center">🏆 Πόντοι</h2>
     <div id="scores"></div>
+
+    <h2 style="text-align:center;margin-top:30px;">🎮 Παίκτες</h2>
+    <div id="participants"></div>
   </div>
 
 </div>
 
-<div id="overlay"></div>
-
-<!-- SOUNDS -->
-<audio id="stepSound" src="/assets/sounds/step.mp3"></audio>
-<audio id="jackpotSound" src="/assets/sounds/jackpot.mp3"></audio>
-<audio id="leaderSound" src="/assets/sounds/leader.mp3"></audio>
-<audio id="bgMusic" src="/assets/sounds/bg.mp3" loop></audio>
-
 <script>
-const STEP_DURATION = 1000;
-const DICE_DISPLAY_MS = 2500;
-
-const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
-const CELL = canvas.width / 10;
-const COLOR_A = "#3A7F80";
-const COLOR_B = "#2F6364";
-
-const stepSound = document.getElementById("stepSound");
-const jackpotSound = document.getElementById("jackpotSound");
-const leaderSound = document.getElementById("leaderSound");
-const bgMusic = document.getElementById("bgMusic");
-bgMusic.volume = 0.25;
-
-let players = {};
-let scores = {};
-let visuals = {};
-let images = {};
-let winPoints = 50;
-let lastLeader = null;
-
-/* AVATARS */
-for(let i=1;i<=10;i++){
-  const img = new Image();
-  img.src = `/assets/pawns/avatar_${i}.png`;
-  images[`avatar_${i}`] = img;
-}
-
-/* DRAW */
-function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  for(let i=0;i<100;i++){
-    const n=i+1;
-    const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
-    const x=c*CELL,y=(9-r)*CELL;
-    ctx.fillStyle=n%2?COLOR_A:COLOR_B;
-    ctx.fillRect(x,y,CELL,CELL);
-    ctx.strokeStyle="#ffffff44";
-    ctx.strokeRect(x,y,CELL,CELL);
-    ctx.fillStyle="rgba(0,0,0,.35)";
-    ctx.font="bold 18px Arial";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-    ctx.fillText(n,x+CELL/2,y+CELL/2);
-  }
-
-  Object.values(visuals).forEach(p=>{
-    if(p.pos<=0) return;
-    const i=p.pos-1;
-    const r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
-    const cx=c*CELL+CELL/2;
-    const cy=(9-r)*CELL+CELL/2;
-    const img=images[p.pawn];
-    if(img?.complete){
-      const s=CELL*0.65;
-      ctx.drawImage(img,cx-s/2,cy-s/2,s,s);
-    }
-  });
-}
-
-/* MOVE */
-function animateMove(id,newPos){
-  const p=visuals[id];
-  let cur=p.pos;
-  const step=newPos>cur?1:-1;
-  const timer=setInterval(()=>{
-    cur+=step;
-    p.pos=cur;
-    stepSound.currentTime=0;
-    stepSound.play();
-    draw();
-    if(cur===newPos) clearInterval(timer);
-  },STEP_DURATION);
-}
-
-/* SCOREBOARD */
-function updateScores(){
-  const box=document.getElementById("scores");
-  box.innerHTML="";
-  const ordered=Object.keys(scores)
-    .map(id=>({id,score:scores[id]}))
-    .sort((a,b)=>b.score-a.score);
-
-  const leader=ordered[0]?.id;
-  if(leader && leader!==lastLeader){
-    leaderSound.play();
-    lastLeader=leader;
-  }
-
-  ordered.forEach((item,i)=>{
-    const p=players[item.id];
-    if(!p) return;
-    const row=document.createElement("div");
-    row.className="score"+(i===0?" leader":"");
-    row.innerHTML=`
-      <img src="${images[p.pawn].src}">
-      <div class="points">${i===0?"👑 ":""}${item.score}/${winPoints}</div>
-    `;
-    box.appendChild(row);
-  });
-}
-
-/* OVERLAY */
-const overlay=document.getElementById("overlay");
-function showOverlay(html,ms){
-  overlay.innerHTML=html;
-  overlay.classList.add("show");
-  setTimeout(()=>overlay.classList.remove("show"),ms);
-}
-
-/* WS */
-const ws=new WebSocket(
+const ws = new WebSocket(
   (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
+let players = {};
+let scores = {};
+
+const participantsDiv = document.getElementById("participants");
+
+/* ============ DRAW PARTICIPANTS ============ */
+function drawParticipants(){
+  participantsDiv.innerHTML="";
+
+  Object.keys(players).forEach(id=>{
+    const p = players[id];
+
+    const d = document.createElement("div");
+    d.className="participant";
+
+    const img = document.createElement("img");
+    img.src = `/assets/pawns/${p.pawn}.png`;
+
+    d.appendChild(img);
+    participantsDiv.appendChild(d);
+  });
+}
+
+/* ============ WS ============ */
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
 
-  if(type==="INIT"||type==="UPDATE"){
-    players=data.players;
-    scores=data.scores||scores;
-    winPoints=data.winPoints||winPoints;
+  if(type==="UPDATE"){
+    players = data.players || {};
+    scores = data.scores || {};
 
-    Object.keys(players).forEach(id=>{
-      visuals[id] ??= { pawn:players[id].pawn, pos:0 };
-      if(players[id].pos!==visuals[id].pos){
-        animateMove(id,players[id].pos);
-      }
-    });
-
-    updateScores();
-    draw();
-  }
-
-  if(type==="DICE"){
-    showOverlay(`<div>🎲 ${data.dice}</div>`,DICE_DISPLAY_MS);
-  }
-
-  if(type==="BONUS"){
-    const p=players[data.id];
-    if(data.bonus>=8) jackpotSound.play();
-
-    showOverlay(`
-      <div>
-        <img src="/assets/pawns/${p.pawn}.png">
-        <div>
-          ${data.bonus>=8?"🎉 JACKPOT":data.bonus>0?"🎁 BONUS":"⚠️ ΠΟΙΝΗ"}<br>
-          ${data.bonus>0?"+":""}${data.bonus} πόντοι
-        </div>
-      </div>
-    `,data.bonus>=8?7000:5000);
-
-    scores=data.scores;
-    updateScores();
-  }
-
-  if(type==="ROUND_COUNTDOWN"){
-    if(data.seconds===10){
-      Object.values(visuals).forEach(v=>v.pos=0);
-      draw();
-    }
-    showOverlay(`🔄 Επόμενος γύρος σε ${data.seconds}`,1000);
-  }
-
-  if(type==="TOURNAMENT_WINNER"){
-    showOverlay("🏆 ΤΕΛΙΚΟΣ ΝΙΚΗΤΗΣ!",8000);
+    drawParticipants();
   }
 };
 
-/* CONTROLS */
-startBtn.onclick=()=>{
-  bgMusic.currentTime=0;
-  bgMusic.play().catch(()=>{});
-  ws.send(JSON.stringify({type:"START"}));
-};
-resetBtn.onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
-targetSelect.onchange=e=>ws.send(JSON.stringify({
-  type:"SET_TARGET", data:{points:+e.target.value}
-}));
-
+/* QR */
 qrImg.src =
   "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" +
   encodeURIComponent(location.origin + "/phone");
-
-draw();
 </script>
 
 </body>
