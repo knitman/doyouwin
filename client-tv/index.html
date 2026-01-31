@@ -2,64 +2,26 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8">
-<title>Party Board – TV</title>
-
+<title>TV</title>
 <style>
-body{margin:0;background:#1b1b1b;color:#fff;font-family:Arial;}
-#root{display:grid;grid-template-columns:240px auto 280px;height:100vh;gap:24px;padding:24px;}
-#controls{display:flex;flex-direction:column;gap:16px;align-items:center;}
-button,select{width:190px;padding:14px;font-size:20px;border:none;border-radius:16px;}
-button{background:#FFD166;font-weight:bold;cursor:pointer;}
-canvas{background:#2F6364;border-radius:16px;}
-#scores{display:flex;flex-direction:column;gap:10px;}
-.score{display:flex;justify-content:space-between;align-items:center;background:#333;padding:10px 14px;border-radius:14px;}
-.score.leader{background:#FFD166;color:#000;font-weight:bold;}
-.score img{width:42px;height:42px;object-fit:contain;}
-#overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;justify-content:center;align-items:center;text-align:center;font-size:56px;font-weight:bold;opacity:0;pointer-events:none;transition:.3s;}
-#overlay.show{opacity:1;}
-#overlay img{width:120px;height:120px;object-fit:contain;margin-bottom:20px;}
+body{margin:0;background:#2F6364;color:#fff;font-family:Arial;text-align:center}
+canvas{background:#2F6364;margin-top:20px}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:80px;font-weight:bold;opacity:0;transition:.3s}
+#overlay.show{opacity:1}
 </style>
 </head>
-
 <body>
 
-<div id="root">
-  <div id="controls">
-    <select id="targetSelect">
-      <option value="50">50</option>
-      <option value="100">100</option>
-      <option value="150">150</option>
-      <option value="200">200</option>
-    </select>
-    <button id="startBtn">START</button>
-    <button id="resetBtn">RESTART</button>
-    <img id="qrImg" width="160">
-  </div>
-
-  <canvas id="board" width="800" height="800"></canvas>
-
-  <div>
-    <h2 style="text-align:center">🏆 Πόντοι</h2>
-    <div id="scores"></div>
-  </div>
-</div>
-
+<button id="startBtn">START</button>
+<button id="resetBtn">RESET</button>
+<br>
+<canvas id="board" width="800" height="800"></canvas>
 <div id="overlay"></div>
 
-<audio id="jackpotSound" src="/assets/sounds/jackpot.mp3"></audio>
-<audio id="leaderSound" src="/assets/sounds/leader.mp3"></audio>
-<audio id="bgMusic" src="/assets/sounds/bg.mp3" loop></audio>
-
 <script>
-const STEP_DURATION=1000, DICE_DISPLAY_MS=2500;
-const canvas=board, ctx=canvas.getContext("2d");
-const CELL=canvas.width/10, COLOR_A="#3A7F80", COLOR_B="#2F6364";
-const jackpotSound=jackpotSoundEl=document.getElementById("jackpotSound");
-const leaderSound=document.getElementById("leaderSound");
-const bgMusic=document.getElementById("bgMusic");
-bgMusic.volume=.25;
-
-let players={},scores={},visuals={},images={},winPoints=50,lastLeader=null;
+const canvas=board,ctx=canvas.getContext("2d");
+const CELL=80;
+let players={},visuals={},images={};
 
 for(let i=1;i<=10;i++){
   const img=new Image();
@@ -70,40 +32,22 @@ for(let i=1;i<=10;i++){
 function draw(){
   ctx.clearRect(0,0,800,800);
   for(let i=0;i<100;i++){
-    const n=i+1,r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
-    const x=c*CELL,y=(9-r)*CELL;
-    ctx.fillStyle=n%2?COLOR_A:COLOR_B;
-    ctx.fillRect(x,y,CELL,CELL);
-    ctx.fillStyle="rgba(0,0,0,.35)";
-    ctx.font="bold 18px Arial";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-    ctx.fillText(n,x+CELL/2,y+CELL/2);
+    const x=(i%10)*CELL;
+    const y=Math.floor(i/10)*CELL;
+    ctx.strokeRect(x,y,CELL,CELL);
   }
   Object.values(visuals).forEach(p=>{
     if(p.pos<=0)return;
-    const i=p.pos-1,r=Math.floor(i/10);
-    const c=r%2===0?i%10:9-(i%10);
-    const cx=c*CELL+CELL/2,cy=(9-r)*CELL+CELL/2;
-    const img=images[p.pawn];
-    if(img?.complete)ctx.drawImage(img,cx-26,cy-26,52,52);
+    const i=p.pos-1;
+    const x=(i%10)*CELL+20;
+    const y=Math.floor(i/10)*CELL+20;
+    ctx.drawImage(images[p.pawn],x,y,40,40);
   });
 }
 
-function animateMove(id,newPos){
-  const p=visuals[id];let cur=p.pos;
-  const step=newPos>cur?1:-1;
-  const t=setInterval(()=>{
-    cur+=step;p.pos=cur;draw();
-    if(cur===newPos)clearInterval(t);
-  },STEP_DURATION);
-}
-
-function showOverlay(html,ms){
-  overlay.innerHTML=html;
-  overlay.classList.add("show");
-  setTimeout(()=>overlay.classList.remove("show"),ms);
+function move(id,newPos){
+  visuals[id].pos=newPos;
+  draw();
 }
 
 const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
@@ -111,41 +55,25 @@ const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
 
-  if(type==="INIT"||type==="UPDATE"){
-    players=data.players;scores=data.scores||scores;
+  if(type==="UPDATE"){
+    players=data.players;
     Object.keys(players).forEach(id=>{
       visuals[id]??={pawn:players[id].pawn,pos:0};
-      if(players[id].pos!==visuals[id].pos){
-        animateMove(id,players[id].pos);
-      }
+      move(id,players[id].pos);
     });
-    draw();
   }
 
   if(type==="DICE"){
-    showOverlay(`🎲 ${data.dice}`,DICE_DISPLAY_MS);
-  }
-
-  if(type==="BONUS"){
-    const p=players[data.id];
-    showOverlay(`
-      <div>
-        <img src="/assets/pawns/${p.pawn}.png">
-        <div>${data.bonus>0?"+":""}${data.bonus} πόντοι</div>
-      </div>`,5000);
+    overlay.innerText=`🎲 ${data.dice}`;
+    overlay.classList.add("show");
+    setTimeout(()=>overlay.classList.remove("show"),1000);
   }
 };
 
-startBtn.onclick=()=>{
-  bgMusic.currentTime=0;
-  bgMusic.play().catch(()=>{});
-  ws.send(JSON.stringify({type:"START"}));
-};
+startBtn.onclick=()=>ws.send(JSON.stringify({type:"START"}));
 resetBtn.onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
 
-qrImg.src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+encodeURIComponent(location.origin+"/phone");
 draw();
 </script>
-
 </body>
 </html>
