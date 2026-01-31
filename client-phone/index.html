@@ -11,8 +11,10 @@ body{
   background:#2F6364;
   color:#fff;
   font-family:Arial,sans-serif;
+  text-align:center;
 }
 
+/* AVATAR GRID */
 #avatars{
   display:grid;
   grid-template-columns:repeat(5,1fr);
@@ -30,14 +32,12 @@ body{
 .avatar img{
   width:100%;
   display:block;
-  border-radius:10px;
 }
 
 .avatar.sel{
   border:3px solid #FFD700;
 }
 
-/* 🔒 LOCK */
 .avatar.locked::after{
   content:"🔒";
   position:absolute;
@@ -47,6 +47,23 @@ body{
   align-items:center;
   justify-content:center;
   font-size:40px;
+}
+
+/* GAME MODE */
+#game{
+  display:none;
+  margin-top:40px;
+}
+
+#myPawn{
+  width:180px;
+  margin:auto;
+}
+
+#dice{
+  font-size:60px;
+  margin-top:40px;
+  cursor:pointer;
 }
 
 button{
@@ -62,6 +79,12 @@ button{
 
 <div id="avatars"></div>
 <button id="ready" disabled>READY</button>
+
+<div id="game">
+  <img id="myPawn">
+  <div id="dice">🎲</div>
+</div>
+
 <div id="info"></div>
 
 <script>
@@ -74,6 +97,9 @@ let myId=null, myPawn=null;
 const avatars=document.getElementById("avatars");
 const ready=document.getElementById("ready");
 const info=document.getElementById("info");
+const game=document.getElementById("game");
+const myPawnImg=document.getElementById("myPawn");
+const dice=document.getElementById("dice");
 
 /* AVATARS */
 for(let i=1;i<=10;i++){
@@ -99,6 +125,19 @@ ready.onclick=()=>{
   ws.send(JSON.stringify({type:"JOIN",data:{pawn:myPawn}}));
 };
 
+/* GAME MODE UI */
+function enterGameMode(){
+  avatars.style.display="none";
+  ready.style.display="none";
+  game.style.display="block";
+  myPawnImg.src=`/assets/pawns/${myPawn}.png`;
+}
+
+/* DICE */
+dice.onclick=()=>{
+  ws.send(JSON.stringify({type:"ROLL"}));
+};
+
 /* WS */
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
@@ -117,6 +156,11 @@ ws.onmessage=e=>{
 
   if(type==="PAWN_TAKEN"){
     info.textContent="❌ Το πιόνι το πήρε άλλος!";
+  }
+
+  // Μόλις κλειδώσει το πιόνι σου, μπαίνεις game mode
+  if(type==="PAWN_STATE" && myPawn && data.includes(myPawn)){
+    enterGameMode();
   }
 };
 </script>
