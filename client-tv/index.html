@@ -68,29 +68,6 @@ canvas{
   font-weight:bold;
 }
 
-/* NEW: PARTICIPANTS */
-#participants{
-  margin-top:20px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  align-items:center;
-}
-.participant{
-  width:60px;
-  height:60px;
-  background:#333;
-  border-radius:12px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-.participant img{
-  width:85%;
-  height:85%;
-  object-fit:contain;
-}
-
 /* OVERLAY */
 #overlay{
   position:fixed;
@@ -140,9 +117,6 @@ canvas{
   <div>
     <h2 style="text-align:center">🏆 Πόντοι</h2>
     <div id="scores"></div>
-
-    <h2 style="text-align:center;margin-top:24px;">🎮 Παίκτες</h2>
-    <div id="participants"></div>
   </div>
 
 </div>
@@ -177,25 +151,6 @@ let visuals = {};
 let images = {};
 let winPoints = 50;
 let lastLeader = null;
-
-const participantsDiv = document.getElementById("participants");
-
-function drawParticipants(){
-  participantsDiv.innerHTML="";
-  Object.keys(players).forEach(id=>{
-    const p = players[id];
-    if(!p) return;
-
-    const d=document.createElement("div");
-    d.className="participant";
-
-    const img=document.createElement("img");
-    img.src=images[p.pawn].src;
-
-    d.appendChild(img);
-    participantsDiv.appendChild(d);
-  });
-}
 
 /* AVATARS */
 for(let i=1;i<=10;i++){
@@ -238,8 +193,131 @@ function draw(){
   });
 }
 
-/* ... ΟΛΟ ΤΟ ΥΠΟΛΟΙΠΟ SCRIPT ΣΟΥ ΜΕΝΕΙ ΙΔΙΟ ... */
+/* MOVE */
+function animateMove(id,newPos){
+  const p=visuals[id];
+  let cur=p.pos;
+  const step=newPos>cur?1:-1;
+  const timer=setInterval(()=>{
+    cur+=step;
+    p.pos=cur;
+    stepSound.currentTime=0;
+    stepSound.play();
+    draw();
+    if(cur===newPos) clearInterval(timer);
+  },STEP_DURATION);
+}
 
+/* SCOREBOARD */
+function updateScores(){
+  const box=document.getElementById("scores");
+  box.innerHTML="";
+  const ordered=Object.keys(scores)
+    .map(id=>({id,score:scores[id]}))
+    .sort((a,b)=>b.score-a.score);
+
+  const leader=ordered[0]?.id;
+  if(leader && leader!==lastLeader){
+    leaderSound.play();
+    lastLeader=leader;
+  }
+
+  ordered.forEach((item,i)=>{
+    const p=players[item.id];
+    if(!p) return;
+    const row=document.createElement("div");
+    row.className="score"+(i===0?" leader":"");
+    row.innerHTML=`
+      <img src="${images[p.pawn].src}">
+      <div class="points">${i===0?"👑 ":""}${item.score}/${winPoints}</div>
+    `;
+    box.appendChild(row);
+  });
+}
+
+/* OVERLAY */
+const overlay=document.getElementById("overlay");
+function showOverlay(html,ms){
+  overlay.innerHTML=html;
+  overlay.classList.add("show");
+  setTimeout(()=>overlay.classList.remove("show"),ms);
+}
+
+/* WS */
+const ws=new WebSocket(
+  (location.protocol==="https:"?"wss://":"ws://")+location.host
+);
+
+ws.onmessage=e=>{
+  const {type,data}=JSON.parse(e.data);
+
+  if(type==="INIT"||type==="UPDATE"){
+    players=data.players;
+    scores=data.scores||scores;
+    winPoints=data.winPoints||winPoints;
+
+    Object.keys(players).forEach(id=>{
+      visuals[id] ??= { pawn:players[id].pawn, pos:0 };
+      if(players[id].pos!==visuals[id].pos){
+        animateMove(id,players[id].pos);
+      }
+    });
+
+    updateScores();
+    draw();
+  }
+
+  if(type==="DICE"){
+    showOverlay(`<div>🎲 ${data.dice}</div>`,DICE_DISPLAY_MS);
+  }
+
+  if(type==="BONUS"){
+    const p=players[data.id];
+    if(data.bonus>=8) jackpotSound.play();
+
+    showOverlay(`
+      <div>
+        <img src="/assets/pawns/${p.pawn}.png">
+        <div>
+          ${data.bonus>=8?"🎉 JACKPOT":data.bonus>0?"🎁 BONUS":"⚠️ ΠΟΙΝΗ"}<br>
+          ${data.bonus>0?"+":""}${data.bonus} πόντοι
+        </div>
+      </div>
+    `,data.bonus>=8?7000:5000);
+
+    scores=data.scores;
+    updateScores();
+  }
+
+  if(type==="ROUND_COUNTDOWN"){
+    if(data.seconds===10){
+      Object.values(visuals).forEach(v=>v.pos=0);
+      draw();
+    }
+    showOverlay(`🔄 Επόμενος γύρος σε ${data.seconds}`,1000);
+  }
+
+  if(type==="TOURNAMENT_WINNER"){
+    showOverlay("🏆 ΤΕΛΙΚΟΣ ΝΙΚΗΤΗΣ!",8000);
+  }
+};
+
+/* CONTROLS */
+startBtn.onclick=()=>{
+  bgMusic.currentTime=0;
+  bgMusic.play().catch(()=>{});
+  ws.send(JSON.stringify({type:"START"}));
+};
+resetBtn.onclick=()=>ws.send(JSON.stringify({type:"RESET"}));
+targetSelect.onchange=e=>ws.send(JSON.stringify({
+  type:"SET_TARGET", data:{points:+e.target.value}
+}));
+
+qrImg.src =
+  "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" +
+  encodeURIComponent(location.origin + "/phone");
+
+draw();
 </script>
 
 </body>
