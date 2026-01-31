@@ -1,143 +1,174 @@
 <!DOCTYPE html>
 <html lang="el">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Party Board – Phone</title>
 
 <style>
 body{
   margin:0;
+  font-family:Arial, sans-serif;
   background:#2F6364;
   color:#fff;
-  font-family:Arial,sans-serif;
-}
-#app{
-  max-width:420px;
-  margin:auto;
-  padding:20px;
   text-align:center;
 }
-#avatars{
+h1{ margin:16px 0; }
+
+#pawns{
   display:grid;
-  grid-template-columns:repeat(5,1fr);
-  gap:10px;
+  grid-template-columns:repeat(5, 1fr);
+  gap:12px;
+  padding:16px;
 }
-.avatar{
-  background:#fff;
-  border-radius:14px;
-  padding:6px;
+
+.pawn{
+  background:#ffffff22;
+  border-radius:16px;
+  padding:10px;
   cursor:pointer;
+  border:3px solid transparent;
+  transition:.2s;
 }
-.avatar img{
-  width:100%;
-  height:60px;
+.pawn img{
+  width:64px;
+  height:64px;
   object-fit:contain;
 }
-.avatar.sel{
-  outline:4px solid #FFD166;
+.pawn.selected{
+  border-color:#FFD166;
+  background:#ffffff55;
 }
+.pawn.taken{
+  opacity:.25;
+  filter:grayscale(1);
+  pointer-events:none;
+}
+
 button{
-  width:100%;
-  padding:18px;
   margin-top:18px;
-  font-size:26px;
+  padding:14px 28px;
+  font-size:22px;
   border:none;
-  border-radius:22px;
+  border-radius:14px;
   background:#FFD166;
   font-weight:bold;
 }
+
 #dice{
+  margin-top:24px;
   display:none;
-  background:#EF476F;
-  color:#fff;
 }
-#info{
-  margin-top:14px;
-  font-size:18px;
+
+#msg{
+  margin-top:16px;
+  min-height:28px;
+  font-weight:bold;
 }
 </style>
 </head>
 
 <body>
 
-<div id="app">
-  <h2>Διάλεξε πιόνι</h2>
-  <div id="avatars"></div>
+<h1>Διάλεξε Πιόνι</h1>
 
-  <button id="ready" disabled>ΕΤΟΙΜΟΣ</button>
-  <button id="dice">🎲 ΡΙΞΕ ΖΑΡΙ</button>
+<div id="pawns"></div>
 
-  <div id="info"></div>
+<button id="readyBtn">ΕΙΜΑΙ ΕΤΟΙΜΟΣ</button>
+
+<div id="dice">
+  <button id="rollBtn">ΡΙΞΕ ΖΑΡΙ</button>
 </div>
+
+<div id="msg"></div>
 
 <script>
 const ws = new WebSocket(
   (location.protocol==="https:"?"wss://":"ws://")+location.host
 );
 
-let myId=null, myPawn=null, myTurn=false, myScore=0;
+let selectedPawn = null;
+let players = {};
 
-/* AVATARS */
+const pawnsDiv = document.getElementById("pawns");
+const msg = document.getElementById("msg");
+const readyBtn = document.getElementById("readyBtn");
+const diceDiv = document.getElementById("dice");
+const rollBtn = document.getElementById("rollBtn");
+
+/* CREATE PAWNS */
 for(let i=1;i<=10;i++){
-  const d=document.createElement("div");
-  d.className="avatar";
-  d.innerHTML=`<img src="/assets/pawns/avatar_${i}.png">`;
-  d.onclick=()=>{
-    document.querySelectorAll(".avatar").forEach(a=>a.classList.remove("sel"));
-    d.classList.add("sel");
-    myPawn=`avatar_${i}`;
-    ready.disabled=false;
+  const d = document.createElement("div");
+  d.className = "pawn";
+  d.dataset.pawn = `avatar_${i}`;
+  d.innerHTML = `<img src="/assets/pawns/avatar_${i}.png">`;
+
+  d.onclick = () => {
+    if(d.classList.contains("taken")) return;
+
+    document.querySelectorAll(".pawn")
+      .forEach(p=>p.classList.remove("selected"));
+
+    d.classList.add("selected");
+    selectedPawn = d.dataset.pawn;
   };
-  avatars.appendChild(d);
+
+  pawnsDiv.appendChild(d);
+}
+
+/* UPDATE TAKEN PAWNS */
+function refreshTaken(){
+  const taken = Object.values(players).map(p=>p.pawn);
+
+  document.querySelectorAll(".pawn").forEach(p=>{
+    const pawn = p.dataset.pawn;
+    if(taken.includes(pawn)){
+      p.classList.add("taken");
+    }else{
+      p.classList.remove("taken");
+    }
+  });
 }
 
 /* READY */
-ready.onclick=()=>{
-  ws.send(JSON.stringify({type:"JOIN",data:{pawn:myPawn}}));
-  ready.style.display="none";
-  avatars.style.display="none";
-  info.textContent="Περιμένεις...";
+readyBtn.onclick = ()=>{
+  if(!selectedPawn){
+    msg.innerText = "Διάλεξε πρώτα πιόνι";
+    return;
+  }
+  ws.send(JSON.stringify({
+    type:"JOIN",
+    data:{ pawn:selectedPawn }
+  }));
 };
 
-/* DICE */
-dice.onclick=()=>{
-  if(!myTurn) return;
-  ws.send(JSON.stringify({type:"ROLL"}));
-  myTurn=false;
-  dice.style.display="none";
-  info.textContent="Περιμένεις...";
+/* ROLL */
+rollBtn.onclick = ()=>{
+  ws.send(JSON.stringify({ type:"ROLL" }));
 };
 
 /* WS */
-ws.onmessage=e=>{
-  const {type,data}=JSON.parse(e.data);
+ws.onmessage = e=>{
+  const {type, data} = JSON.parse(e.data);
 
-  if(type==="INIT") myId=data.id;
+  if(type==="INIT" || type==="UPDATE"){
+    players = data.players || {};
+    refreshTaken();
 
-  if(type==="UPDATE"){
-    myScore=data.scores?.[myId] ?? myScore;
-    if(data.turn===myId){
-      myTurn=true;
-      dice.style.display="block";
-      info.textContent=`Η σειρά σου • Πόντοι: ${myScore}/${data.winPoints}`;
+    if(data.turn === ws.id){
+      diceDiv.style.display="block";
+      msg.innerText = "Η σειρά σου!";
+    }else{
+      diceDiv.style.display="none";
     }
   }
 
-  if(type==="BONUS" && data.id===myId){
-    navigator.vibrate?.(data.bonus>=8?[300,150,300]:[200]);
-    info.textContent =
-      data.bonus>=8 ? `🎉 JACKPOT +${data.bonus}` :
-      data.bonus>0 ? `➕ +${data.bonus} πόντοι` :
-                     `❌ ${data.bonus} πόντοι`;
-    setTimeout(()=>{},5000);
+  if(type==="PAWN_TAKEN"){
+    msg.innerText = "❌ Το πιόνι χρησιμοποιείται. Διάλεξε άλλο.";
   }
 
-  if(type==="TOURNAMENT_WINNER"){
-    info.textContent =
-      data.id===myId
-        ? `🏆 ΚΕΡΔΙΣΕΣ! (${data.winPoints})`
-        : `😅 Τέλος παιχνιδιού`;
+  if(type==="DICE"){
+    msg.innerText = `Έφερες 🎲 ${data.dice}`;
   }
 };
 </script>
