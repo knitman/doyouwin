@@ -14,42 +14,39 @@ body{
 
 #root{
   display:grid;
-  grid-template-columns:240px auto 280px;
+  grid-template-columns:240px auto 300px;
   height:100vh;
 }
 
 /* RIGHT PANEL */
-#rightPanel{
-  padding:10px;
-  border-left:3px solid #333;
-  display:flex;
-  flex-direction:column;
-}
-
 #participants{
   margin-top:20px;
   display:flex;
   flex-direction:column;
-  gap:10px;
-  align-items:center;
+  gap:12px;
 }
 
 .participant{
-  width:70px;
-  height:70px;
-  border-radius:10px;
-  background:#2a2a2a;
   display:flex;
   align-items:center;
-  justify-content:center;
-  padding:6px;
+  gap:10px;
+  background:#2a2a2a;
+  padding:8px;
+  border-radius:10px;
 }
 
 .participant img{
-  width:100%;
+  width:55px;
+  height:55px;
 }
 
-/* SCORE */
+.participant .score{
+  margin-left:auto;
+  font-size:22px;
+  font-weight:bold;
+  color:#FFD700;
+}
+
 #scores{
   margin-top:10px;
 }
@@ -60,7 +57,7 @@ body{
 
 <div id="root">
 
-  <!-- LEFT -->
+  <!-- LEFT PANEL (ΔΕΝ ΠΕΙΡΑΧΤΗΚΕ) -->
   <div style="padding:10px">
     <h3>Ρυθμίσεις</h3>
     <button id="startBtn">START</button>
@@ -68,15 +65,12 @@ body{
     <img id="qrImg" width="160">
   </div>
 
-  <!-- BOARD -->
+  <!-- BOARD (ΔΕΝ ΠΕΙΡΑΧΤΗΚΕ) -->
   <canvas id="board" width="800" height="800"></canvas>
 
-  <!-- RIGHT -->
-  <div id="rightPanel">
-    <h2 style="text-align:center">🏆 Πόντοι</h2>
-    <div id="scores"></div>
-
-    <h2 style="text-align:center;margin-top:30px;">🎮 Παίκτες</h2>
+  <!-- RIGHT PANEL -->
+  <div style="padding:10px">
+    <h2 style="text-align:center">🎮 Παίκτες</h2>
     <div id="participants"></div>
   </div>
 
@@ -92,7 +86,7 @@ let scores = {};
 
 const participantsDiv = document.getElementById("participants");
 
-/* ============ DRAW PARTICIPANTS ============ */
+/* ========= DRAW PARTICIPANTS ========= */
 function drawParticipants(){
   participantsDiv.innerHTML="";
 
@@ -105,19 +99,28 @@ function drawParticipants(){
     const img = document.createElement("img");
     img.src = `/assets/pawns/${p.pawn}.png`;
 
+    const name = document.createElement("div");
+    name.textContent = id.substring(0,4);
+
+    const score = document.createElement("div");
+    score.className="score";
+    score.textContent = scores[id] ?? 0;
+
     d.appendChild(img);
+    d.appendChild(name);
+    d.appendChild(score);
+
     participantsDiv.appendChild(d);
   });
 }
 
-/* ============ WS ============ */
+/* ========= WS ========= */
 ws.onmessage=e=>{
   const {type,data}=JSON.parse(e.data);
 
   if(type==="UPDATE"){
     players = data.players || {};
     scores = data.scores || {};
-
     drawParticipants();
   }
 };
