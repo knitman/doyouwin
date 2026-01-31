@@ -208,7 +208,7 @@ function animateMove(id,newPos){
   },STEP_DURATION);
 }
 
-/* SCOREBOARD (UPDATED) */
+/* SCOREBOARD (FIXED) */
 function updateScores(){
   const box=document.getElementById("scores");
   box.innerHTML="";
@@ -230,7 +230,7 @@ function updateScores(){
 
     row.innerHTML=`
       <div style="display:flex;align-items:center;gap:10px;">
-        <img src="${images[p.pawn].src}">
+        <img src="/assets/pawns/${p.pawn}.png">
         <div style="font-size:18px;font-weight:bold;">
           ${item.id.substring(0,4)}
         </div>
